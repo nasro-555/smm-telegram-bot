@@ -58,10 +58,10 @@ function replaceRedCrossInKeyboard(replyMarkup) {
     for (const button of row) {
       if (
         typeof button?.text === "string" &&
-        button.text.includes("â")
+        button.text.includes("❌")
       ) {
         button.text = button.text
-          .replace(/â/g, "")
+          .replace(/❌/g, "")
           .trim();
 
         if (!button.icon_custom_emoji_id) {
@@ -92,25 +92,25 @@ bot.telegram.callApi = async (
       method === "editMessageText"
     ) &&
     typeof nextPayload.text === "string" &&
-    nextPayload.text.includes("â")
+    nextPayload.text.includes("❌")
   ) {
     if (nextPayload.parse_mode === "HTML") {
       nextPayload.text =
         nextPayload.text.replace(
-          /â/g,
+          /❌/g,
           tgEmoji(
             ERROR_CUSTOM_EMOJI_ID,
-            "â"
+            "❌"
           )
         );
     } else if (!nextPayload.parse_mode) {
       nextPayload.text =
         escapeHtml(nextPayload.text)
           .replace(
-            /â/g,
+            /❌/g,
             tgEmoji(
               ERROR_CUSTOM_EMOJI_ID,
-              "â"
+              "❌"
             )
           );
 
@@ -180,16 +180,16 @@ function htmlServiceName(value) {
 
   return safe
     .replace(
-      /ð/g,
-      tgEmoji(SERVICE_TEXT_EMOJI.rocket, "ð")
+      /🚀/g,
+      tgEmoji(SERVICE_TEXT_EMOJI.rocket, "🚀")
     )
     .replace(
-      /â ï¸/g,
-      tgEmoji(SERVICE_TEXT_EMOJI.danger, "â ï¸")
+      /⚠️/g,
+      tgEmoji(SERVICE_TEXT_EMOJI.danger, "⚠️")
     )
     .replace(
-      /â /g,
-      tgEmoji(SERVICE_TEXT_EMOJI.danger, "â ï¸")
+      /⚠/g,
+      tgEmoji(SERVICE_TEXT_EMOJI.danger, "⚠️")
     );
 }
 
@@ -199,41 +199,41 @@ function normalizeName(value) {
 
 function platformFallback(name) {
   const value = normalizeName(name);
-  if (value === "instagram") return "ð¸";
-  if (value === "facebook") return "ð";
-  if (value === "tiktok") return "ðµ";
-  if (value === "youtube") return "â¶ï¸";
-  if (value === "telegram") return "âï¸";
-  if (["twitter / x", "twitter", "x"].includes(value)) return "âï¸";
-  if (value === "whatsapp") return "ð¬";
-  if (["kick", "kik"].includes(value)) return "ð";
-  if (value === "threads") return "ð§µ";
-  if (["linkedin", "linkdin"].includes(value)) return "ð¼";
-  if (["google maps", "google map"].includes(value)) return "ð";
-  if (value === "likee") return "â¤ï¸";
-  if (value === "snapchat") return "ð»";
-  return "ð±";
+  if (value === "instagram") return "📸";
+  if (value === "facebook") return "📘";
+  if (value === "tiktok") return "🎵";
+  if (value === "youtube") return "▶️";
+  if (value === "telegram") return "✈️";
+  if (["twitter / x", "twitter", "x"].includes(value)) return "✖️";
+  if (value === "whatsapp") return "💬";
+  if (["kick", "kik"].includes(value)) return "💚";
+  if (value === "threads") return "🧵";
+  if (["linkedin", "linkdin"].includes(value)) return "💼";
+  if (["google maps", "google map"].includes(value)) return "📍";
+  if (value === "likee") return "❤️";
+  if (value === "snapchat") return "👻";
+  return "📱";
 }
 
 function categoryFallback(name) {
   const value = normalizeName(name);
   if (
-    value.includes("ÙØ§ÙÙÙØ±") ||
-    value.includes("ÙÙØ¨Ø±") ||
+    value.includes("فالوور") ||
+    value.includes("ممبر") ||
     value.includes("subscriber") ||
     value.includes("member") ||
-    value.includes("Ø³Ø§Ø¨Ø³Ú©Ø±Ø§ÛØ¨Ø±")
-  ) return "ð¥";
+    value.includes("سابسکرایبر")
+  ) return "👥";
   if (
-    value.includes("ÙØ§ÛÚ©") ||
+    value.includes("لایک") ||
     value.includes("like") ||
-    value.includes("Ø±ÛâØ§Ú©Ø´Ù") ||
+    value.includes("ری‌اکشن") ||
     value.includes("reaction")
-  ) return "â¤ï¸";
-  if (value.includes("Ú©Ø§ÙÙØª") || value.includes("comment")) return "ð¬";
-  if (value.includes("ÙÛÙ") || value.includes("view")) return "ð";
-  if (value.includes("live")) return "ð´";
-  return "ð¹";
+  ) return "❤️";
+  if (value.includes("کامنت") || value.includes("comment")) return "💬";
+  if (value.includes("ویو") || value.includes("view")) return "👁";
+  if (value.includes("live")) return "🔴";
+  return "🔹";
 }
 
 function htmlPlatform(name) {
@@ -252,28 +252,28 @@ function htmlCategory(name) {
 
 function htmlMenuTitle(key, text) {
   const map = {
-    newOrder: [CUSTOM_EMOJI.menu.newOrder, "ð"],
-    prices: [CUSTOM_EMOJI.menu.prices, "ð·ï¸"],
-    orders: [CUSTOM_EMOJI.menu.orders, "ð¦"],
-    balance: [CUSTOM_EMOJI.menu.balance, "ð°"],
-    deposit: [CUSTOM_EMOJI.menu.deposit, "ð³"],
-    support: [CUSTOM_EMOJI.menu.support, "ð§"]
+    newOrder: [CUSTOM_EMOJI.menu.newOrder, "🛒"],
+    prices: [CUSTOM_EMOJI.menu.prices, "🏷️"],
+    orders: [CUSTOM_EMOJI.menu.orders, "📦"],
+    balance: [CUSTOM_EMOJI.menu.balance, "💰"],
+    deposit: [CUSTOM_EMOJI.menu.deposit, "💳"],
+    support: [CUSTOM_EMOJI.menu.support, "🎧"]
   };
 
-  const [id, fallback] = map[key] ?? [null, "â¨"];
+  const [id, fallback] = map[key] ?? [null, "✨"];
   const icon = id ? tgEmoji(id, fallback) : fallback;
   return `${icon} ${escapeHtml(text)}`;
 }
 
 function htmlInfoLine(key, label, value) {
   const map = {
-    price: [CUSTOM_EMOJI.info.price, "ðµ"],
-    min: [CUSTOM_EMOJI.info.min, "â¬ï¸"],
-    max: [CUSTOM_EMOJI.info.max, "â¬ï¸"],
-    orderType: [CUSTOM_EMOJI.info.orderType, "ð"]
+    price: [CUSTOM_EMOJI.info.price, "💵"],
+    min: [CUSTOM_EMOJI.info.min, "⬇️"],
+    max: [CUSTOM_EMOJI.info.max, "⬆️"],
+    orderType: [CUSTOM_EMOJI.info.orderType, "📝"]
   };
 
-  const [id, fallback] = map[key] ?? [null, "ð¹"];
+  const [id, fallback] = map[key] ?? [null, "🔹"];
   const icon = id ? tgEmoji(id, fallback) : fallback;
   return `${icon} ${escapeHtml(label)}: ${escapeHtml(value)}`;
 }
@@ -298,10 +298,10 @@ const REFILL_WAIT_MS = 48 * 60 * 60 * 1000;
 function orderControlKeyboard(order) {
   const rows = [];
   if (order.refill_supported && !order.refill_id) {
-    rows.push([Markup.button.callback("â»ï¸ Ø¬Ø¨Ø±Ø§Ù Ø±ÛØ²Ø´", `order:refill:${order.id}`)]);
+    rows.push([Markup.button.callback("♻️ جبران ریزش", `order:refill:${order.id}`)]);
   }
   if (order.cancel_supported && !order.cancel_closed && !order.cancel_requested_at) {
-    rows.push([Markup.button.callback("â Ø«Ø¨Øª Ú©ÙØ³Ù", `order:cancel_api:${order.id}`)]);
+    rows.push([Markup.button.callback("❌ ثبت کنسل", `order:cancel_api:${order.id}`)]);
   }
   rows.push(...mainMenu().reply_markup.inline_keyboard);
   return Markup.inlineKeyboard(rows);
@@ -320,8 +320,8 @@ async function home(ctx) {
   await clearSession(ctx.from.id);
 
   const text =
-    `${tgEmoji(CUSTOM_EMOJI.info.welcome, "ð")} Ø®ÙØ´ Ø¢ÙØ¯ÛØ¯ Ø¨Ù AFPLAY\n\n` +
-    "ÛÚ©Û Ø§Ø² Ú¯Ø²ÛÙÙâÙØ§Û Ø²ÛØ± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©ÙÛØ¯:";
+    `${tgEmoji(CUSTOM_EMOJI.info.welcome, "👋")} خوش آمدید به AFPLAY\n\n` +
+    "یکی از گزینه‌های زیر را انتخاب کنید:";
 
   const options = htmlText(text, mainMenu());
 
@@ -342,13 +342,13 @@ async function platforms(ctx, mode) {
 
   const platformTitleEmoji = tgEmoji(
     CUSTOM_EMOJI.info.platformTitle,
-    "ð±"
+    "📱"
   );
 
   const title =
     mode === "order"
-      ? `${platformTitleEmoji} Ø¨Ø±Ø§Û Ú©Ø¯Ø§Ù Ø¨Ø±ÙØ§ÙÙ ÙÛâØ®ÙØ§ÙÛØ¯ Ø³ÙØ§Ø±Ø´ Ø«Ø¨Øª Ú©ÙÛØ¯Ø`
-      : `${platformTitleEmoji} ÙÛÙØª Ø®Ø¯ÙØ§Øª Ú©Ø¯Ø§Ù Ø¨Ø±ÙØ§ÙÙ Ø±Ø§ ÙÛâØ®ÙØ§ÙÛØ¯Ø`;
+      ? `${platformTitleEmoji} برای کدام برنامه می‌خواهید سفارش ثبت کنید؟`
+      : `${platformTitleEmoji} قیمت خدمات کدام برنامه را می‌خواهید؟`;
 
   await ctx.editMessageText(
     title,
@@ -366,7 +366,7 @@ async function categories(ctx, mode, platformId) {
 
   if (!platformResult.rowCount) {
     return ctx.editMessageText(
-      "â Ù¾ÙØªÙØ±Ù Ù¾ÛØ¯Ø§ ÙØ´Ø¯.",
+      "❌ پلتفرم پیدا نشد.",
       mainMenu()
     );
   }
@@ -384,8 +384,8 @@ async function categories(ctx, mode, platformId) {
   const title =
     `${htmlPlatform(platform.name)}\n\n` +
     (mode === "order"
-      ? "ÙÙØ¹ Ø®Ø¯ÙØ§Øª Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©ÙÛØ¯:"
-      : "ÙÛÙØª Ú©Ø¯Ø§Ù Ø®Ø¯ÙØ§Øª Ø±Ø§ ÙÛâØ®ÙØ§ÙÛØ¯Ø");
+      ? "نوع خدمات را انتخاب کنید:"
+      : "قیمت کدام خدمات را می‌خواهید؟");
 
   await ctx.editMessageText(
     title,
@@ -441,7 +441,7 @@ async function servicePanels(
 
   if (!info) {
     return ctx.editMessageText(
-      "â Ø¯Ø³ØªÙâØ¨ÙØ¯Û Ù¾ÛØ¯Ø§ ÙØ´Ø¯.",
+      "❌ دسته‌بندی پیدا نشد.",
       mainMenu()
     );
   }
@@ -465,7 +465,7 @@ async function servicePanels(
 
   rows.push([
     customEmojiCallback(
-      "Ø¨Ø±Ú¯Ø´Øª",
+      "برگشت",
       `${mode}:platform:${platformId}`,
       CUSTOM_EMOJI.back
     )
@@ -476,14 +476,14 @@ async function servicePanels(
     `${htmlCategory(info.category_name)}\n\n`;
 
   if (!panels.length) {
-    const text = title + "ÙÙÙØ² Ø³Ø±ÙÛØ³Û Ø¨Ø±Ø§Û Ø§ÛÙ Ø¨Ø®Ø´ Ø§Ø¶Ø§ÙÙ ÙØ´Ø¯Ù Ø§Ø³Øª.";
+    const text = title + "هنوز سرویسی برای این بخش اضافه نشده است.";
     return ctx.editMessageText(
       text,
       htmlText(text, Markup.inlineKeyboard(rows))
     );
   }
 
-  const text = title + "Ù¾ÙÙ ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©ÙÛØ¯:";
+  const text = title + "پنل موردنظر را انتخاب کنید:";
 
   await ctx.editMessageText(
     text,
@@ -497,7 +497,7 @@ function shortName(name, max = 38) {
     .trim();
 
   return clean.length > max
-    ? clean.slice(0, max - 1) + "â¦"
+    ? clean.slice(0, max - 1) + "…"
     : clean;
 }
 
@@ -527,11 +527,11 @@ async function providerPanel(
 
     if (!services.length) {
       return ctx.editMessageText(
-        `â ÙØ¹ÙØ§Ù ÙÛÚ Ø³Ø±ÙÛØ³ ${panel.label} Ø§Ø² Ø§ÛÙ Ù¾ÙÙ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ ÙÛØ³Øª.`,
+        `❌ فعلاً هیچ سرویس ${panel.label} از این پنل در دسترس نیست.`,
         Markup.inlineKeyboard([
           [
             customEmojiCallback(
-              "Ø¨Ø±Ú¯Ø´Øª",
+              "برگشت",
               `${mode}:category:${platformId}:${categoryId}`,
               CUSTOM_EMOJI.back
             )
@@ -549,7 +549,7 @@ async function providerPanel(
 
     rows.push([
       customEmojiCallback(
-        "Ø¨Ø±Ú¯Ø´Øª",
+        "برگشت",
         `${mode}:category:${platformId}:${categoryId}`,
         CUSTOM_EMOJI.back
       )
@@ -558,7 +558,7 @@ async function providerPanel(
     const text =
       `${htmlPlatform(info?.platform_name ?? panel.platformSlug)}\n` +
       `${htmlCategory(panel.panelName)}\n\n` +
-      "ÛÚ©Û Ø§Ø² Ø³Ø±ÙÛØ³âÙØ§ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©ÙÛØ¯:";
+      "یکی از سرویس‌ها را انتخاب کنید:";
 
     await ctx.editMessageText(
       text,
@@ -571,7 +571,7 @@ async function providerPanel(
     );
 
     await ctx.editMessageText(
-      "â ÙØ¹ÙØ§Ù Ø§ØªØµØ§Ù Ø¨Ù Ø§ÛÙ Ù¾ÙÙ ÙÙÚ©Ù ÙÛØ³Øª. Ú©ÙÛ Ø¨Ø¹Ø¯ Ø¯ÙØ¨Ø§Ø±Ù Ø§ÙØªØ­Ø§Ù Ú©ÙÛØ¯.",
+      "❌ فعلاً اتصال به این پنل ممکن نیست. کمی بعد دوباره امتحان کنید.",
       mainMenu()
     );
   }
@@ -595,7 +595,7 @@ async function providerService(
 
     if (!service) {
       return ctx.editMessageText(
-        "â Ø§ÛÙ Ø³Ø±ÙÛØ³ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ ÙÛØ³Øª.",
+        "❌ این سرویس در دسترس نیست.",
         mainMenu()
       );
     }
@@ -609,15 +609,15 @@ async function providerService(
 
     if (service.customComments) {
       extra =
-        `\n${htmlInfoLine("orderType", "ÙÙØ¹ Ø³ÙØ§Ø±Ø´", "Ú©Ø§ÙÙØª Ø¯ÙØ®ÙØ§Ù")}` +
-        "\nÙØ± Ú©Ø§ÙÙØª Ø±Ø§ Ø¯Ø± ÛÚ© Ø®Ø· Ø¬Ø¯Ø§ ÙØ§Ø±Ø¯ ÙÛâÚ©ÙÛØ¯.";
+        `\n${htmlInfoLine("orderType", "نوع سفارش", "کامنت دلخواه")}` +
+        "\nهر کامنت را در یک خط جدا وارد می‌کنید.";
     }
 
     const text =
       `${serviceTitle(info, service.name)}\n\n` +
-      `${htmlInfoLine("price", "ÙÛÙØª ÙØ± 1000", `$${service.sellingRate.toFixed(2)}`)}\n` +
-      `${htmlInfoLine("min", "Ø­Ø¯Ø§ÙÙ Ø³ÙØ§Ø±Ø´", service.min.toLocaleString("en-US"))}\n` +
-      `${htmlInfoLine("max", "Ø­Ø¯Ø§Ú©Ø«Ø± Ø³ÙØ§Ø±Ø´", service.max.toLocaleString("en-US"))}` +
+      `${htmlInfoLine("price", "قیمت هر 1000", `$${service.sellingRate.toFixed(2)}`)}\n` +
+      `${htmlInfoLine("min", "حداقل سفارش", service.min.toLocaleString("en-US"))}\n` +
+      `${htmlInfoLine("max", "حداکثر سفارش", service.max.toLocaleString("en-US"))}` +
       extra;
 
     await ctx.editMessageText(
@@ -627,14 +627,14 @@ async function providerService(
         Markup.inlineKeyboard([
           [
             customEmojiCallback(
-              "Ø§ÛØ¬Ø§Ø¯ Ø³ÙØ§Ø±Ø´",
+              "ایجاد سفارش",
               `po:${providerCode}:${panelCode}:${platformId}:${categoryId}:${service.service}`,
               CUSTOM_EMOJI.menu.newOrder
             )
           ],
           [
             customEmojiCallback(
-              "Ø¨Ø±Ú¯Ø´Øª",
+              "برگشت",
               `pv:${providerCode}:${panelCode}:${modeCode(mode)}:${platformId}:${categoryId}`,
               CUSTOM_EMOJI.back
             )
@@ -649,7 +649,7 @@ async function providerService(
     );
 
     await ctx.editMessageText(
-      "â Ø¯Ø±ÛØ§ÙØª Ø§Ø·ÙØ§Ø¹Ø§Øª Ø§ÛÙ Ø³Ø±ÙÛØ³ ÙÙÚ©Ù ÙØ´Ø¯.",
+      "❌ دریافت اطلاعات این سرویس ممکن نشد.",
       mainMenu()
     );
   }
@@ -751,7 +751,7 @@ bot.action(
   async (ctx) => {
     await answerCb(
       ctx,
-      "Ø¯Ø± Ø­Ø§Ù Ø¯Ø±ÛØ§ÙØª Ø³Ø±ÙÛØ³âÙØ§..."
+      "در حال دریافت سرویس‌ها..."
     );
 
     await providerPanel(
@@ -802,7 +802,7 @@ bot.action(
 
       if (!service) {
         return ctx.editMessageText(
-          "â Ø³Ø±ÙÛØ³ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ ÙÛØ³Øª.",
+          "❌ سرویس در دسترس نیست.",
           mainMenu()
         );
       }
@@ -838,12 +838,12 @@ bot.action(
 
         const text =
           `${serviceTitle(info, service.name)}\n\n` +
-          `${htmlInfoLine("price", "ÙÛÙØª ÙØ± 1000", `$${service.sellingRate.toFixed(2)}`)}\n` +
-          `${htmlInfoLine("min", "Ø­Ø¯Ø§ÙÙ Ø³ÙØ§Ø±Ø´", service.min.toLocaleString("en-US"))}\n` +
-          `${htmlInfoLine("max", "Ø­Ø¯Ø§Ú©Ø«Ø± Ø³ÙØ§Ø±Ø´", service.max.toLocaleString("en-US"))}\n` +
-          `${htmlInfoLine("orderType", "ÙÙØ¹ Ø³ÙØ§Ø±Ø´", "Ú©Ø§ÙÙØª Ø¯ÙØ®ÙØ§Ù")}\n\n` +
-          "Ø§Ø¨ØªØ¯Ø§ ÙÛÙÚ© ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§Ø±Ø³Ø§Ù Ú©ÙÛØ¯.\n\n" +
-          "Ø¨Ø±Ø§Û ÙØºÙ: /cancel";
+          `${htmlInfoLine("price", "قیمت هر 1000", `$${service.sellingRate.toFixed(2)}`)}\n` +
+          `${htmlInfoLine("min", "حداقل سفارش", service.min.toLocaleString("en-US"))}\n` +
+          `${htmlInfoLine("max", "حداکثر سفارش", service.max.toLocaleString("en-US"))}\n` +
+          `${htmlInfoLine("orderType", "نوع سفارش", "کامنت دلخواه")}\n\n` +
+          "ابتدا لینک موردنظر را ارسال کنید.\n\n" +
+          "برای لغو: /cancel";
 
         return ctx.editMessageText(
           text,
@@ -859,11 +859,11 @@ bot.action(
 
       const text =
         `${serviceTitle(info, service.name)}\n\n` +
-        `${htmlInfoLine("price", "ÙÛÙØª ÙØ± 1000", `$${service.sellingRate.toFixed(2)}`)}\n` +
-        `${htmlInfoLine("min", "Ø­Ø¯Ø§ÙÙ Ø³ÙØ§Ø±Ø´", service.min.toLocaleString("en-US"))}\n` +
-        `${htmlInfoLine("max", "Ø­Ø¯Ø§Ú©Ø«Ø± Ø³ÙØ§Ø±Ø´", service.max.toLocaleString("en-US"))}\n\n` +
-        "ØªØ¹Ø¯Ø§Ø¯ ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø¨Ù ØµÙØ±Øª Ø¹Ø¯Ø¯ Ø§Ø±Ø³Ø§Ù Ú©ÙÛØ¯.\n\n" +
-        "Ø¨Ø±Ø§Û ÙØºÙ: /cancel";
+        `${htmlInfoLine("price", "قیمت هر 1000", `$${service.sellingRate.toFixed(2)}`)}\n` +
+        `${htmlInfoLine("min", "حداقل سفارش", service.min.toLocaleString("en-US"))}\n` +
+        `${htmlInfoLine("max", "حداکثر سفارش", service.max.toLocaleString("en-US"))}\n\n` +
+        "تعداد موردنظر را به صورت عدد ارسال کنید.\n\n" +
+        "برای لغو: /cancel";
 
       await ctx.editMessageText(
         text,
@@ -876,7 +876,7 @@ bot.action(
       );
 
       await ctx.editMessageText(
-        "â Ø´Ø±ÙØ¹ Ø³ÙØ§Ø±Ø´ ÙÙÚ©Ù ÙØ´Ø¯.",
+        "❌ شروع سفارش ممکن نشد.",
         mainMenu()
       );
     }
@@ -887,7 +887,7 @@ bot.command("cancel", async (ctx) => {
   await clearSession(ctx.from.id);
 
   await ctx.reply(
-    "â Ø³ÙØ§Ø±Ø´ ÙØºÙ Ø´Ø¯.",
+    "❌ سفارش لغو شد.",
     mainMenu()
   );
 });
@@ -910,7 +910,7 @@ bot.on("text", async (ctx) => {
       amount > 10000
     ) {
       return ctx.reply(
-        "â ÙØ¨ÙØº Ø¨Ø§ÛØ¯ ÛÚ© Ø¹Ø¯Ø¯ Ø¨ÛÙ 1 ØªØ§ 10,000 Ø¯ÙØ§Ø± Ø¨Ø§Ø´Ø¯."
+        "❌ مبلغ باید یک عدد بین 1 تا 10,000 دلار باشد."
       );
     }
 
@@ -965,19 +965,19 @@ bot.on("text", async (ctx) => {
       );
 
       return ctx.reply(
-        `â ÙØ§Ú©ØªÙØ± Heleket Ø³Ø§Ø®ØªÙ Ø´Ø¯.\n\n` +
-        `ðµ ÙØ¨ÙØº: $${amount.toFixed(2)}\n` +
-        "Ù¾Ø³ Ø§Ø² ØªØ£ÛÛØ¯ Ù¾Ø±Ø¯Ø§Ø®ØªØ ÙÙØ¬ÙØ¯Û Ø´ÙØ§ Ø®ÙØ¯Ú©Ø§Ø± Ø§ÙØ²Ø§ÛØ´ ÙÛâÛØ§Ø¨Ø¯.",
+        `✅ فاکتور Heleket ساخته شد.\n\n` +
+        `💵 مبلغ: $${amount.toFixed(2)}\n` +
+        "پس از تأیید پرداخت، موجودی شما خودکار افزایش می‌یابد.",
         Markup.inlineKeyboard([
           [
             Markup.button.url(
-              "ð³ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¨Ø§ Heleket",
+              "💳 پرداخت با Heleket",
               invoice.url
             )
           ],
           [
             customEmojiCallback(
-              "Ø¨Ø±Ú¯Ø´Øª",
+              "برگشت",
               "menu:home",
               CUSTOM_EMOJI.back
             )
@@ -1007,7 +1007,7 @@ bot.on("text", async (ctx) => {
       ).catch(() => {});
 
       return ctx.reply(
-        "â Ø³Ø§Ø®Øª ÙØ§Ú©ØªÙØ± Heleket ÙÙÚ©Ù ÙØ´Ø¯. Ú©ÙÛ Ø¨Ø¹Ø¯ Ø¯ÙØ¨Ø§Ø±Ù Ø§ÙØªØ­Ø§Ù Ú©ÙÛØ¯.",
+        "❌ ساخت فاکتور Heleket ممکن نشد. کمی بعد دوباره امتحان کنید.",
         mainMenu()
       );
     }
@@ -1020,19 +1020,19 @@ bot.on("text", async (ctx) => {
 
     if (!Number.isInteger(quantity)) {
       return ctx.reply(
-        "â ØªØ¹Ø¯Ø§Ø¯ Ø¨Ø§ÛØ¯ ÛÚ© Ø¹Ø¯Ø¯ ØµØ­ÛØ­ Ø¨Ø§Ø´Ø¯."
+        "❌ تعداد باید یک عدد صحیح باشد."
       );
     }
 
     if (quantity < min) {
       return ctx.reply(
-        `â Ø­Ø¯Ø§ÙÙ Ø³ÙØ§Ø±Ø´ Ø§ÛÙ Ø³Ø±ÙÛØ³ ${min.toLocaleString("en-US")} Ø¹Ø¯Ø¯ Ø§Ø³Øª.`
+        `❌ حداقل سفارش این سرویس ${min.toLocaleString("en-US")} عدد است.`
       );
     }
 
     if (quantity > max) {
       return ctx.reply(
-        `â Ø­Ø¯Ø§Ú©Ø«Ø± Ø³ÙØ§Ø±Ø´ Ø§ÛÙ Ø³Ø±ÙÛØ³ ${max.toLocaleString("en-US")} Ø¹Ø¯Ø¯ Ø§Ø³Øª.`
+        `❌ حداکثر سفارش این سرویس ${max.toLocaleString("en-US")} عدد است.`
       );
     }
 
@@ -1053,16 +1053,16 @@ bot.on("text", async (ctx) => {
     );
 
     return ctx.reply(
-      `â ØªØ¹Ø¯Ø§Ø¯: ${quantity.toLocaleString("en-US")}\n` +
-      `ðµ ÙÛÙØª ÙÙØ§ÛÛ: $${charge.toFixed(2)}\n\n` +
-      "Ø­Ø§ÙØ§ ÙÛÙÚ© ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§Ø±Ø³Ø§Ù Ú©ÙÛØ¯."
+      `✅ تعداد: ${quantity.toLocaleString("en-US")}\n` +
+      `💵 قیمت نهایی: $${charge.toFixed(2)}\n\n` +
+      "حالا لینک موردنظر را ارسال کنید."
     );
   }
 
   if (session.state === "provider_link") {
     if (text.length < 5) {
       return ctx.reply(
-        "â ÙÛÙÚ© ÙØ¹ØªØ¨Ø± ÙÛØ³Øª. Ø¯ÙØ¨Ø§Ø±Ù Ø§Ø±Ø³Ø§Ù Ú©ÙÛØ¯."
+        "❌ لینک معتبر نیست. دوباره ارسال کنید."
       );
     }
 
@@ -1078,12 +1078,12 @@ bot.on("text", async (ctx) => {
     );
 
     const confirmText =
-      `ð¦ Ø®ÙØ§ØµÙ Ø³ÙØ§Ø±Ø´\n\n` +
-      `ð¹ Ø³Ø±ÙÛØ³: ${htmlServiceName(data.service_name)}\n` +
-      `ð ØªØ¹Ø¯Ø§Ø¯: ${Number(data.quantity).toLocaleString("en-US")}\n` +
-      `ðµ ÙÛÙØª ÙÙØ§ÛÛ: $${Number(data.charge).toFixed(2)}\n` +
-      `ð ÙÛÙÚ©: ${escapeHtml(data.link)}\n\n` +
-      "Ø³ÙØ§Ø±Ø´ Ø±Ø§ ØªØ£ÛÛØ¯ ÙÛâÚ©ÙÛØ¯Ø";
+      `📦 خلاصه سفارش\n\n` +
+      `🔹 سرویس: ${htmlServiceName(data.service_name)}\n` +
+      `📊 تعداد: ${Number(data.quantity).toLocaleString("en-US")}\n` +
+      `💵 قیمت نهایی: $${Number(data.charge).toFixed(2)}\n` +
+      `🔗 لینک: ${escapeHtml(data.link)}\n\n` +
+      "سفارش را تأیید می‌کنید؟";
 
     return ctx.reply(
       confirmText,
@@ -1092,13 +1092,13 @@ bot.on("text", async (ctx) => {
         Markup.inlineKeyboard([
           [
             Markup.button.callback(
-              "â ØªØ£ÛÛØ¯ Ø³ÙØ§Ø±Ø´",
+              "✅ تأیید سفارش",
               "provider:confirm"
             )
           ],
           [
             Markup.button.callback(
-              "â ÙØºÙ",
+              "❌ لغو",
               "order:cancel"
             )
           ]
@@ -1110,7 +1110,7 @@ bot.on("text", async (ctx) => {
   if (session.state === "provider_custom_link") {
     if (text.length < 5) {
       return ctx.reply(
-        "â ÙÛÙÚ© ÙØ¹ØªØ¨Ø± ÙÛØ³Øª. Ø¯ÙØ¨Ø§Ø±Ù Ø§Ø±Ø³Ø§Ù Ú©ÙÛØ¯."
+        "❌ لینک معتبر نیست. دوباره ارسال کنید."
       );
     }
 
@@ -1124,8 +1124,8 @@ bot.on("text", async (ctx) => {
     );
 
     return ctx.reply(
-      "ð¬ Ø­Ø§ÙØ§ ÙØªÙ Ú©Ø§ÙÙØªâÙØ§ Ø±Ø§ Ø§Ø±Ø³Ø§Ù Ú©ÙÛØ¯.\n\n" +
-      "ÙØ± Ú©Ø§ÙÙØª Ø¨Ø§ÛØ¯ Ø¯Ø± ÛÚ© Ø®Ø· Ø¬Ø¯Ø§ Ø¨Ø§Ø´Ø¯."
+      "💬 حالا متن کامنت‌ها را ارسال کنید.\n\n" +
+      "هر کامنت باید در یک خط جدا باشد."
     );
   }
 
@@ -1141,14 +1141,14 @@ bot.on("text", async (ctx) => {
 
     if (quantity < min) {
       return ctx.reply(
-        `â Ø­Ø¯Ø§ÙÙ Ø§ÛÙ Ø³Ø±ÙÛØ³ ${min.toLocaleString("en-US")} Ú©Ø§ÙÙØª Ø§Ø³Øª.\n` +
-        `Ø´ÙØ§ ${quantity.toLocaleString("en-US")} Ú©Ø§ÙÙØª ÙØ±Ø³ØªØ§Ø¯ÛØ¯.`
+        `❌ حداقل این سرویس ${min.toLocaleString("en-US")} کامنت است.\n` +
+        `شما ${quantity.toLocaleString("en-US")} کامنت فرستادید.`
       );
     }
 
     if (quantity > max) {
       return ctx.reply(
-        `â Ø­Ø¯Ø§Ú©Ø«Ø± Ø§ÛÙ Ø³Ø±ÙÛØ³ ${max.toLocaleString("en-US")} Ú©Ø§ÙÙØª Ø§Ø³Øª.`
+        `❌ حداکثر این سرویس ${max.toLocaleString("en-US")} کامنت است.`
       );
     }
 
@@ -1172,12 +1172,12 @@ bot.on("text", async (ctx) => {
     );
 
     const confirmText =
-      `ð¦ Ø®ÙØ§ØµÙ Ø³ÙØ§Ø±Ø´\n\n` +
-      `ð¹ Ø³Ø±ÙÛØ³: ${htmlServiceName(data.service_name)}\n` +
-      `ð¬ ØªØ¹Ø¯Ø§Ø¯ Ú©Ø§ÙÙØª: ${quantity.toLocaleString("en-US")}\n` +
-      `ðµ ÙÛÙØª ÙÙØ§ÛÛ: $${charge.toFixed(2)}\n` +
-      `ð ÙÛÙÚ©: ${escapeHtml(data.link)}\n\n` +
-      "Ø³ÙØ§Ø±Ø´ Ø±Ø§ ØªØ£ÛÛØ¯ ÙÛâÚ©ÙÛØ¯Ø";
+      `📦 خلاصه سفارش\n\n` +
+      `🔹 سرویس: ${htmlServiceName(data.service_name)}\n` +
+      `💬 تعداد کامنت: ${quantity.toLocaleString("en-US")}\n` +
+      `💵 قیمت نهایی: $${charge.toFixed(2)}\n` +
+      `🔗 لینک: ${escapeHtml(data.link)}\n\n` +
+      "سفارش را تأیید می‌کنید؟";
 
     return ctx.reply(
       confirmText,
@@ -1186,13 +1186,13 @@ bot.on("text", async (ctx) => {
         Markup.inlineKeyboard([
           [
             Markup.button.callback(
-              "â ØªØ£ÛÛØ¯ Ø³ÙØ§Ø±Ø´",
+              "✅ تأیید سفارش",
               "provider:confirm"
             )
           ],
           [
             Markup.button.callback(
-              "â ÙØºÙ",
+              "❌ لغو",
               "order:cancel"
             )
           ]
@@ -1207,7 +1207,7 @@ bot.action("order:cancel", async (ctx) => {
   await clearSession(ctx.from.id);
 
   await ctx.editMessageText(
-    "â Ø³ÙØ§Ø±Ø´ ÙØºÙ Ø´Ø¯.",
+    "❌ سفارش لغو شد.",
     mainMenu()
   );
 });
@@ -1215,7 +1215,7 @@ bot.action("order:cancel", async (ctx) => {
 bot.action("provider:confirm", async (ctx) => {
   await answerCb(
     ctx,
-    "Ø¯Ø± Ø­Ø§Ù Ø«Ø¨Øª Ø³ÙØ§Ø±Ø´..."
+    "در حال ثبت سفارش..."
   );
 
   const session = await getSession(
@@ -1224,7 +1224,7 @@ bot.action("provider:confirm", async (ctx) => {
 
   if (session.state !== "provider_confirm") {
     return ctx.editMessageText(
-      "â Ø§ÛÙ Ø³ÙØ§Ø±Ø´ ÙÙÙØ¶Û Ø´Ø¯Ù Ø§Ø³Øª.",
+      "❌ این سفارش منقضی شده است.",
       mainMenu()
     );
   }
@@ -1253,9 +1253,9 @@ bot.action("provider:confirm", async (ctx) => {
       await client.query("ROLLBACK");
 
       const insufficientText =
-        `â ÙÙØ¬ÙØ¯Û Ú©Ø§ÙÛ ÙÛØ³Øª.\n\n` +
-        `ðµ ÙÙØ¬ÙØ¯Û Ø´ÙØ§: $${balance.toFixed(2)}\n` +
-        `${tgEmoji(ORDER_RESULT_EMOJI.amount, "ðµ")} ÙØ¨ÙØº Ø³ÙØ§Ø±Ø´: $${charge.toFixed(2)}`;
+        `❌ موجودی کافی نیست.\n\n` +
+        `💵 موجودی شما: $${balance.toFixed(2)}\n` +
+        `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} مبلغ سفارش: $${charge.toFixed(2)}`;
 
       return ctx.editMessageText(
         insufficientText,
@@ -1327,11 +1327,11 @@ bot.action("provider:confirm", async (ctx) => {
     await clearSession(ctx.from.id);
 
     const successText =
-      `${tgEmoji(ORDER_RESULT_EMOJI.success, "â")} Ø³ÙØ§Ø±Ø´ Ø«Ø¨Øª Ø´Ø¯.\n\n` +
-      `${tgEmoji(ORDER_RESULT_EMOJI.orderId, "ð")} Ø´ÙØ§Ø±Ù Ø³ÙØ§Ø±Ø´: #${inserted.rows[0].id}\n` +
-      `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "ð")} ØªØ¹Ø¯Ø§Ø¯: ${Number(data.quantity).toLocaleString("en-US")}\n` +
-      `${tgEmoji(ORDER_RESULT_EMOJI.amount, "ðµ")} ÙØ¨ÙØº: $${charge.toFixed(2)}\n` +
-      `${tgEmoji(ORDER_RESULT_EMOJI.status, "â³")} ÙØ¶Ø¹ÛØª: Pending`;
+      `${tgEmoji(ORDER_RESULT_EMOJI.success, "✅")} سفارش ثبت شد.\n\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.orderId, "🆔")} شماره سفارش: #${inserted.rows[0].id}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${Number(data.quantity).toLocaleString("en-US")}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} مبلغ: $${charge.toFixed(2)}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.status, "⏳")} وضعیت: Pending`;
 
     const orderControl = {
       id: inserted.rows[0].id,
@@ -1357,7 +1357,7 @@ bot.action("provider:confirm", async (ctx) => {
     );
 
     await ctx.reply(
-      "â Ø«Ø¨Øª Ø³ÙØ§Ø±Ø´ Ø¯Ø± Ù¾ÙÙ Ø§ÙØ¬Ø§Ù ÙØ´Ø¯. ÙØ¨ÙØºÛ Ø§Ø² ÙÙØ¬ÙØ¯Û Ø´ÙØ§ Ú©Ù ÙØ´Ø¯.",
+      "❌ ثبت سفارش در پنل انجام نشد. مبلغی از موجودی شما کم نشد.",
       mainMenu()
     );
   } finally {
@@ -1365,7 +1365,74 @@ bot.action("provider:confirm", async (ctx) => {
   }
 });
 
-bot.action(/^order:refill:(\d+)$/, async (ctx) => {\n  const orderId = Number(ctx.match[1]);\n  const order = await loadUserOrder(ctx.from.id, orderId);\n  if (!order) return answerCb(ctx, "Ø³ÙØ§Ø±Ø´ Ù¾ÛØ¯Ø§ ÙØ´Ø¯.");\n  if (!order.refill_supported) return answerCb(ctx, "Ø§ÛÙ Ø³ÙØ§Ø±Ø´ Ø¬Ø¨Ø±Ø§Ù Ø±ÛØ²Ø´ ÙØ¯Ø§Ø±Ø¯.");\n  if (order.refill_id) return answerCb(ctx, "Ø¬Ø¨Ø±Ø§Ù Ø±ÛØ²Ø´ Ø§ÛÙ Ø³ÙØ§Ø±Ø´ ÙØ¨ÙØ§Ù Ø«Ø¨Øª Ø´Ø¯Ù Ø§Ø³Øª.");\n\n  const elapsed = Date.now() - new Date(order.created_at).getTime();\n  if (elapsed < REFILL_WAIT_MS) {\n    const remainingHours = Math.ceil((REFILL_WAIT_MS - elapsed) / (60 * 60 * 1000));\n    return answerCb(ctx, `Ø¨Ø±Ø§Û Ø«Ø¨Øª Ø¬Ø¨Ø±Ø§Ù Ø±ÛØ²Ø´ Ø¨Ø§ÛØ¯ Ø­Ø¯Ø§ÙÙ Û´Û¸ Ø³Ø§Ø¹Øª Ø§Ø² Ø«Ø¨Øª Ø³ÙØ§Ø±Ø´ Ú¯Ø°Ø´ØªÙ Ø¨Ø§Ø´Ø¯. Ø­Ø¯ÙØ¯ ${remainingHours} Ø³Ø§Ø¹Øª Ø¨Ø§ÙÛ ÙØ§ÙØ¯Ù Ø§Ø³Øª.`);\n  }\n\n  await answerCb(ctx, "Ø¯Ø± Ø­Ø§Ù Ø«Ø¨Øª Ø¬Ø¨Ø±Ø§Ù Ø±ÛØ²Ø´...");\n  try {\n    const providerCode = order.provider_name === "smmxserver" ? "smmx" : order.provider_name;\n    const result = await requestProviderRefill(providerCode, order.provider_order_id);\n    await query(\n      `UPDATE orders SET refill_id = $1, refill_requested_at = NOW() WHERE id = $2 AND telegram_id = $3`,\n      [String(result.refill), orderId, ctx.from.id]\n    );\n    await ctx.reply(`â Ø¯Ø±Ø®ÙØ§Ø³Øª Ø¬Ø¨Ø±Ø§Ù Ø±ÛØ²Ø´ Ø¨Ø±Ø§Û Ø³ÙØ§Ø±Ø´ #${orderId} Ø«Ø¨Øª Ø´Ø¯.`);\n    try {\n      const fresh = await loadUserOrder(ctx.from.id, orderId);\n      await ctx.editMessageReplyMarkup(orderControlKeyboard(fresh).reply_markup);\n    } catch {}\n  } catch (error) {\n    console.error("Refill request error:", error);\n    await ctx.reply(`â Ø«Ø¨Øª Ø¬Ø¨Ø±Ø§Ù Ø±ÛØ²Ø´ Ø§ÙØ¬Ø§Ù ÙØ´Ø¯.\n${String(error.message || "Provider rejected the request")}`);\n  }\n});\n\nbot.action(/^order:cancel_api:(\d+)$/, async (ctx) => {\n  const orderId = Number(ctx.match[1]);\n  const order = await loadUserOrder(ctx.from.id, orderId);\n  if (!order) return answerCb(ctx, "Ø³ÙØ§Ø±Ø´ Ù¾ÛØ¯Ø§ ÙØ´Ø¯.");\n  if (!order.cancel_supported || order.cancel_closed) return answerCb(ctx, "Ø§ÙÚ©Ø§Ù Ú©ÙØ³Ù Ø§ÛÙ Ø³ÙØ§Ø±Ø´ Ø¯ÛÚ¯Ø± ÙØ¹Ø§Ù ÙÛØ³Øª.");\n  if (order.cancel_requested_at) return answerCb(ctx, "Ø¯Ø±Ø®ÙØ§Ø³Øª Ú©ÙØ³Ù ÙØ¨ÙØ§Ù Ø«Ø¨Øª Ø´Ø¯Ù Ø§Ø³Øª.");\n\n  await answerCb(ctx, "Ø¯Ø± Ø­Ø§Ù Ø§Ø±Ø³Ø§Ù Ø¯Ø±Ø®ÙØ§Ø³Øª Ú©ÙØ³Ù...");\n  try {\n    const providerCode = order.provider_name === "smmxserver" ? "smmx" : order.provider_name;\n    await requestProviderCancel(providerCode, order.provider_order_id);\n    await query(\n      `UPDATE orders SET cancel_requested_at = NOW(), status = 'cancel_requested' WHERE id = $1 AND telegram_id = $2`,\n      [orderId, ctx.from.id]\n    );\n    await ctx.reply(`â Ø¯Ø±Ø®ÙØ§Ø³Øª Ú©ÙØ³Ù Ø³ÙØ§Ø±Ø´ #${orderId} Ø¨Ø±Ø§Û Ù¾ÙÙ Ø§Ø±Ø³Ø§Ù Ø´Ø¯.`);\n    try {\n      const fresh = await loadUserOrder(ctx.from.id, orderId);\n      await ctx.editMessageReplyMarkup(orderControlKeyboard(fresh).reply_markup);\n    } catch {}\n  } catch (error) {\n    console.error("Cancel request error:", error);\n    await query(\n      `UPDATE orders SET cancel_closed = TRUE WHERE id = $1 AND telegram_id = $2`,\n      [orderId, ctx.from.id]\n    );\n    await ctx.reply("â Ù¾ÙÙ Ø¯ÛÚ¯Ø± Ø§Ø¬Ø§Ø²Ù Ú©ÙØ³Ù Ø§ÛÙ Ø³ÙØ§Ø±Ø´ Ø±Ø§ ÙÙÛâØ¯ÙØ¯.");\n    try {\n      const fresh = await loadUserOrder(ctx.from.id, orderId);\n      await ctx.editMessageReplyMarkup(orderControlKeyboard(fresh).reply_markup);\n    } catch {}\n  }\n});\n\nbot.action("menu:balance", async (ctx) => {
+bot.action(/^order:refill:(\d+)$/, async (ctx) => {
+  const orderId = Number(ctx.match[1]);
+  const order = await loadUserOrder(ctx.from.id, orderId);
+  if (!order) return answerCb(ctx, "سفارش پیدا نشد.");
+  if (!order.refill_supported) return answerCb(ctx, "این سفارش جبران ریزش ندارد.");
+  if (order.refill_id) return answerCb(ctx, "جبران ریزش این سفارش قبلاً ثبت شده است.");
+
+  const elapsed = Date.now() - new Date(order.created_at).getTime();
+  if (elapsed < REFILL_WAIT_MS) {
+    const remainingHours = Math.ceil((REFILL_WAIT_MS - elapsed) / (60 * 60 * 1000));
+    return answerCb(ctx, `برای ثبت جبران ریزش باید حداقل ۴۸ ساعت از ثبت سفارش گذشته باشد. حدود ${remainingHours} ساعت باقی مانده است.`);
+  }
+
+  await answerCb(ctx, "در حال ثبت جبران ریزش...");
+  try {
+    const providerCode = order.provider_name === "smmxserver" ? "smmx" : order.provider_name;
+    const result = await requestProviderRefill(providerCode, order.provider_order_id);
+    await query(
+      `UPDATE orders SET refill_id = $1, refill_requested_at = NOW() WHERE id = $2 AND telegram_id = $3`,
+      [String(result.refill), orderId, ctx.from.id]
+    );
+    await ctx.reply(`✅ درخواست جبران ریزش برای سفارش #${orderId} ثبت شد.`);
+    try {
+      const fresh = await loadUserOrder(ctx.from.id, orderId);
+      await ctx.editMessageReplyMarkup(orderControlKeyboard(fresh).reply_markup);
+    } catch {}
+  } catch (error) {
+    console.error("Refill request error:", error);
+    await ctx.reply(`❌ ثبت جبران ریزش انجام نشد.
+${String(error.message || "Provider rejected the request")}`);
+  }
+});
+
+bot.action(/^order:cancel_api:(\d+)$/, async (ctx) => {
+  const orderId = Number(ctx.match[1]);
+  const order = await loadUserOrder(ctx.from.id, orderId);
+  if (!order) return answerCb(ctx, "سفارش پیدا نشد.");
+  if (!order.cancel_supported || order.cancel_closed) return answerCb(ctx, "امکان کنسل این سفارش دیگر فعال نیست.");
+  if (order.cancel_requested_at) return answerCb(ctx, "درخواست کنسل قبلاً ثبت شده است.");
+
+  await answerCb(ctx, "در حال ارسال درخواست کنسل...");
+  try {
+    const providerCode = order.provider_name === "smmxserver" ? "smmx" : order.provider_name;
+    await requestProviderCancel(providerCode, order.provider_order_id);
+    await query(
+      `UPDATE orders SET cancel_requested_at = NOW(), status = 'cancel_requested' WHERE id = $1 AND telegram_id = $2`,
+      [orderId, ctx.from.id]
+    );
+    await ctx.reply(`✅ درخواست کنسل سفارش #${orderId} برای پنل ارسال شد.`);
+    try {
+      const fresh = await loadUserOrder(ctx.from.id, orderId);
+      await ctx.editMessageReplyMarkup(orderControlKeyboard(fresh).reply_markup);
+    } catch {}
+  } catch (error) {
+    console.error("Cancel request error:", error);
+    await query(
+      `UPDATE orders SET cancel_closed = TRUE WHERE id = $1 AND telegram_id = $2`,
+      [orderId, ctx.from.id]
+    );
+    await ctx.reply("❌ پنل دیگر اجازه کنسل این سفارش را نمی‌دهد.");
+    try {
+      const fresh = await loadUserOrder(ctx.from.id, orderId);
+      await ctx.editMessageReplyMarkup(orderControlKeyboard(fresh).reply_markup);
+    } catch {}
+  }
+});
+
+bot.action("menu:balance", async (ctx) => {
   await answerCb(ctx);
 
   const result = await query(
@@ -1380,8 +1447,8 @@ bot.action(/^order:refill:(\d+)$/, async (ctx) => {\n  const orderId = Number(ct
   );
 
   const text =
-    `${htmlMenuTitle("balance", "ÙÙØ¬ÙØ¯Û ÙÙ")}\n\n` +
-    `ÙÙØ¬ÙØ¯Û Ø´ÙØ§: $${balance.toFixed(2)}`;
+    `${htmlMenuTitle("balance", "موجودی من")}\n\n` +
+    `موجودی شما: $${balance.toFixed(2)}`;
 
   await ctx.editMessageText(
     text,
@@ -1414,8 +1481,8 @@ bot.action("menu:orders", async (ctx) => {
 
   if (!result.rowCount) {
     const emptyText =
-      `${htmlMenuTitle("orders", "Ø³ÙØ§Ø±Ø´âÙØ§Û ÙÙ")}\n\n` +
-      "ÙÙÙØ² Ø³ÙØ§Ø±Ø´Û ÙØ¯Ø§Ø±ÛØ¯.";
+      `${htmlMenuTitle("orders", "سفارش‌های من")}\n\n` +
+      "هنوز سفارشی ندارید.";
 
     return ctx.editMessageText(
       emptyText,
@@ -1427,22 +1494,22 @@ bot.action("menu:orders", async (ctx) => {
     .map(
       (order) =>
         `#${order.id} | ${htmlServiceName(order.service_name ?? "Service")}\n` +
-        `ØªØ¹Ø¯Ø§Ø¯: ${Number(order.quantity).toLocaleString("en-US")} | ` +
+        `تعداد: ${Number(order.quantity).toLocaleString("en-US")} | ` +
         `$${Number(order.charge).toFixed(2)} | ${order.status}`
     )
     .join("\n\n");
 
   const text =
-    `${htmlMenuTitle("orders", "Ø³ÙØ§Ø±Ø´âÙØ§Û ÙÙ")}\n\n${listText}`;
+    `${htmlMenuTitle("orders", "سفارش‌های من")}\n\n${listText}`;
 
   const controlRows = [];
   for (const order of result.rows) {
     const buttons = [];
     if (order.refill_supported && !order.refill_id) {
-      buttons.push(Markup.button.callback(`â»ï¸ Ø¬Ø¨Ø±Ø§Ù #${order.id}`, `order:refill:${order.id}`));
+      buttons.push(Markup.button.callback(`♻️ جبران #${order.id}`, `order:refill:${order.id}`));
     }
     if (order.cancel_supported && !order.cancel_closed && !order.cancel_requested_at) {
-      buttons.push(Markup.button.callback(`â Ú©ÙØ³Ù #${order.id}`, `order:cancel_api:${order.id}`));
+      buttons.push(Markup.button.callback(`❌ کنسل #${order.id}`, `order:cancel_api:${order.id}`));
     }
     if (buttons.length) controlRows.push(buttons);
   }
@@ -1458,8 +1525,8 @@ bot.action("menu:deposit", async (ctx) => {
   await answerCb(ctx);
 
   const text =
-    `${htmlMenuTitle("deposit", "Ø§ÙØ²Ø§ÛØ´ ÙÙØ¬ÙØ¯Û")}\n\n` +
-    "Ø±ÙØ´ Ù¾Ø±Ø¯Ø§Ø®Øª Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©ÙÛØ¯:";
+    `${htmlMenuTitle("deposit", "افزایش موجودی")}\n\n` +
+    "روش پرداخت را انتخاب کنید:";
 
   await ctx.editMessageText(
     text,
@@ -1475,7 +1542,7 @@ bot.action("menu:deposit", async (ctx) => {
         ],
         [
           customEmojiCallback(
-            "Ø¨Ø±Ú¯Ø´Øª",
+            "برگشت",
             "menu:home",
             CUSTOM_EMOJI.back
           )
@@ -1490,8 +1557,8 @@ bot.action("deposit:heleket", async (ctx) => {
 
   if (!publicBaseUrl()) {
     return ctx.editMessageText(
-      "â Ø¯Ø§ÙÙÙ Ø¹ÙÙÙÛ Railway ÙÙÙØ² Ø³Ø§Ø®ØªÙ ÙØ´Ø¯Ù Ø§Ø³Øª.\n\n" +
-      "Ø¨Ø¹Ø¯ Ø§Ø² ÙØµØ¨ Ø§ÛÙ ÙØ³Ø®ÙØ Ø¯Ø± Railway Ø¨Ø±Ø§Û Ù¾ÙØ±Øª 8080 Ø¯Ø§ÙÙÙ Ø¨Ø³Ø§Ø²ÛØ¯.",
+      "❌ دامنه عمومی Railway هنوز ساخته نشده است.\n\n" +
+      "بعد از نصب این نسخه، در Railway برای پورت 8080 دامنه بسازید.",
       mainMenu()
     );
   }
@@ -1503,9 +1570,9 @@ bot.action("deposit:heleket", async (ctx) => {
   );
 
   const text =
-    `${htmlMenuTitle("deposit", "Ø§ÙØ²Ø§ÛØ´ ÙÙØ¬ÙØ¯Û Ø¨Ø§ Heleket")}\n\n` +
-    "ÙØ¨ÙØº Ø±Ø§ Ø¨Ù Ø¯ÙØ§Ø± ÙØ§Ø±Ø¯ Ú©ÙÛØ¯.\n" +
-    "ÙØ«Ø§Ù: 10";
+    `${htmlMenuTitle("deposit", "افزایش موجودی با Heleket")}\n\n` +
+    "مبلغ را به دلار وارد کنید.\n" +
+    "مثال: 10";
 
   await ctx.editMessageText(
     text,
@@ -1514,7 +1581,7 @@ bot.action("deposit:heleket", async (ctx) => {
       Markup.inlineKeyboard([
         [
           customEmojiCallback(
-            "Ø¨Ø±Ú¯Ø´Øª",
+            "برگشت",
             "menu:home",
             CUSTOM_EMOJI.back
           )
@@ -1532,7 +1599,7 @@ bot.action("menu:support", async (ctx) => {
     "@YourSupportUsername";
 
   const text =
-    `${htmlMenuTitle("support", "Ù¾Ø´ØªÛØ¨Ø§ÙÛ")}\n\n${escapeHtml(support)}`;
+    `${htmlMenuTitle("support", "پشتیبانی")}\n\n${escapeHtml(support)}`;
 
   await ctx.editMessageText(
     text,
