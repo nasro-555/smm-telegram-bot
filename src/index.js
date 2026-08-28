@@ -168,8 +168,25 @@ const ORDER_RESULT_EMOJI = {
   orderId: "5965485570124681987",
   quantity: "5071491301443110142",
   amount: "5388803751559586023",
-  status: "5927294695158847101"
+  status: "5927294695158847101",
+  link: "6001078118725456537"
 };
+
+function htmlOrderSummaryTitle() {
+  return `${tgEmoji(CUSTOM_EMOJI.menu.orders, "📦")} خلاصه سفارش`;
+}
+
+function htmlOrderConfirmQuestion() {
+  return `${tgEmoji(ORDER_RESULT_EMOJI.success, "✅")} سفارش را تأیید می‌کنید؟`;
+}
+
+function confirmOrderButton() {
+  return customEmojiCallback(
+    "تأیید سفارش",
+    "provider:confirm",
+    ORDER_RESULT_EMOJI.success
+  );
+}
 
 const SERVICE_TEXT_EMOJI = {
   rocket: "6228656087709520666",
@@ -989,8 +1006,8 @@ async function replyMenuOrders(ctx) {
     .map(
       (order) =>
         `#${order.id} | ${htmlServiceName(order.service_name ?? "Service")}\\n` +
-        `تعداد: ${Number(order.quantity).toLocaleString("en-US")} | ` +
-        `$${Number(order.charge).toFixed(2)} | ${order.status}`
+        `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${Number(order.quantity).toLocaleString("en-US")} | ` +
+        `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} $${Number(order.charge).toFixed(2)} | ${order.status}`
     )
     .join("\\n\\n");
 
@@ -1194,11 +1211,16 @@ bot.on("text", async (ctx) => {
         ctx.from.id
       );
 
-      return ctx.reply(
+      const invoiceText =
         `✅ فاکتور Heleket ساخته شد.\n\n` +
-        `💵 مبلغ: $${amount.toFixed(2)}\n` +
-        "پس از تأیید پرداخت، موجودی شما خودکار افزایش می‌یابد.",
-        Markup.inlineKeyboard([
+        `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} مبلغ: $${amount.toFixed(2)}\n` +
+        "پس از تأیید پرداخت، موجودی شما خودکار افزایش می‌یابد.";
+
+      return ctx.reply(
+        invoiceText,
+        htmlText(
+          invoiceText,
+          Markup.inlineKeyboard([
           [
             Markup.button.url(
               "💳 پرداخت با Heleket",
@@ -1213,6 +1235,7 @@ bot.on("text", async (ctx) => {
             )
           ]
         ])
+        )
       );
     } catch (error) {
       console.error(
@@ -1282,10 +1305,14 @@ bot.on("text", async (ctx) => {
       }
     );
 
+    const quantityText =
+      `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${quantity.toLocaleString("en-US")}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} قیمت نهایی: $${charge.toFixed(2)}\n\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.link, "🔗")} حالا لینک موردنظر را ارسال کنید.`;
+
     return ctx.reply(
-      `✅ تعداد: ${quantity.toLocaleString("en-US")}\n` +
-      `💵 قیمت نهایی: $${charge.toFixed(2)}\n\n` +
-      "حالا لینک موردنظر را ارسال کنید."
+      quantityText,
+      htmlText(quantityText)
     );
   }
 
@@ -1308,12 +1335,12 @@ bot.on("text", async (ctx) => {
     );
 
     const confirmText =
-      `📦 خلاصه سفارش\n\n` +
+      `${htmlOrderSummaryTitle()}\n\n` +
       `🔹 سرویس: ${htmlServiceName(data.service_name)}\n` +
-      `📊 تعداد: ${Number(data.quantity).toLocaleString("en-US")}\n` +
-      `💵 قیمت نهایی: $${Number(data.charge).toFixed(2)}\n` +
-      `🔗 لینک: ${escapeHtml(data.link)}\n\n` +
-      "سفارش را تأیید می‌کنید؟";
+      `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${Number(data.quantity).toLocaleString("en-US")}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} قیمت نهایی: $${Number(data.charge).toFixed(2)}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.link, "🔗")} لینک: ${escapeHtml(data.link)}\n\n` +
+      htmlOrderConfirmQuestion();
 
     return ctx.reply(
       confirmText,
@@ -1321,10 +1348,7 @@ bot.on("text", async (ctx) => {
         confirmText,
         Markup.inlineKeyboard([
           [
-            Markup.button.callback(
-              "✅ تأیید سفارش",
-              "provider:confirm"
-            )
+            confirmOrderButton()
           ],
           [
             Markup.button.callback(
@@ -1402,12 +1426,12 @@ bot.on("text", async (ctx) => {
     );
 
     const confirmText =
-      `📦 خلاصه سفارش\n\n` +
+      `${htmlOrderSummaryTitle()}\n\n` +
       `🔹 سرویس: ${htmlServiceName(data.service_name)}\n` +
-      `💬 تعداد کامنت: ${quantity.toLocaleString("en-US")}\n` +
-      `💵 قیمت نهایی: $${charge.toFixed(2)}\n` +
-      `🔗 لینک: ${escapeHtml(data.link)}\n\n` +
-      "سفارش را تأیید می‌کنید؟";
+      `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد کامنت: ${quantity.toLocaleString("en-US")}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} قیمت نهایی: $${charge.toFixed(2)}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.link, "🔗")} لینک: ${escapeHtml(data.link)}\n\n` +
+      htmlOrderConfirmQuestion();
 
     return ctx.reply(
       confirmText,
@@ -1415,10 +1439,7 @@ bot.on("text", async (ctx) => {
         confirmText,
         Markup.inlineKeyboard([
           [
-            Markup.button.callback(
-              "✅ تأیید سفارش",
-              "provider:confirm"
-            )
+            confirmOrderButton()
           ],
           [
             Markup.button.callback(
@@ -1724,8 +1745,8 @@ bot.action("menu:orders", async (ctx) => {
     .map(
       (order) =>
         `#${order.id} | ${htmlServiceName(order.service_name ?? "Service")}\n` +
-        `تعداد: ${Number(order.quantity).toLocaleString("en-US")} | ` +
-        `$${Number(order.charge).toFixed(2)} | ${order.status}`
+        `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${Number(order.quantity).toLocaleString("en-US")} | ` +
+        `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} $${Number(order.charge).toFixed(2)} | ${order.status}`
     )
     .join("\n\n");
 
