@@ -73,20 +73,6 @@ export async function initDatabase() {
     );
   `);
 
-  const orderColumns = await query(
-    `SELECT column_name
-     FROM information_schema.columns
-     WHERE table_schema = 'public' AND table_name = 'orders'`
-  );
-  const existingOrderColumns = new Set(orderColumns.rows.map((r) => r.column_name));
-
-  if (existingOrderColumns.has("service_option_id")) {
-    await query(`ALTER TABLE orders ALTER COLUMN service_option_id DROP NOT NULL;`);
-  }
-  if (existingOrderColumns.has("package_id")) {
-    await query(`ALTER TABLE orders ALTER COLUMN package_id DROP NOT NULL;`);
-  }
-
   await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_name TEXT;`);
   await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_service_id TEXT;`);
   await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS service_name TEXT;`);
@@ -102,10 +88,10 @@ export async function initDatabase() {
     );
   `);
 
-  await seedPlatforms();
+  await seedPlatformsAndCategories();
 }
 
-async function seedPlatforms() {
+async function seedPlatformsAndCategories() {
   const platforms = [
     ["Instagram", "📸", "instagram", 1],
     ["Facebook", "📘", "facebook", 2],
@@ -134,9 +120,11 @@ async function seedPlatforms() {
     );
   }
 
-  const rows = await query(`SELECT id, slug FROM platforms ORDER BY sort_order`);
+  const platformRows = await query(
+    `SELECT id, slug FROM platforms ORDER BY sort_order`
+  );
 
-  for (const p of rows.rows) {
+  for (const platform of platformRows.rows) {
     let categories = [
       ["فالوور / عضو", "👥", "followers", 1],
       ["لایک", "❤️", "likes", 2],
@@ -144,21 +132,29 @@ async function seedPlatforms() {
       ["کامنت", "💬", "comments", 4]
     ];
 
-    if (p.slug === "youtube") {
+    if (platform.slug === "tiktok") {
+      categories = [
+        ["فالوور", "👥", "followers", 1],
+        ["لایک", "❤️", "likes", 2],
+        ["ویو", "👁", "views", 3],
+        ["کامنت", "💬", "comments", 4],
+        ["Live Stream", "🔴", "live-stream", 5]
+      ];
+    } else if (platform.slug === "youtube") {
       categories = [
         ["سابسکرایبر", "👥", "followers", 1],
         ["لایک", "❤️", "likes", 2],
         ["ویو", "👁", "views", 3],
         ["کامنت", "💬", "comments", 4]
       ];
-    } else if (p.slug === "telegram") {
+    } else if (platform.slug === "telegram") {
       categories = [
         ["ممبر", "👥", "followers", 1],
         ["ری‌اکشن", "❤️", "likes", 2],
         ["ویو", "👁", "views", 3],
         ["کامنت", "💬", "comments", 4]
       ];
-    } else if (p.slug === "google-maps") {
+    } else if (platform.slug === "google-maps") {
       categories = [
         ["خدمات Google Maps", "📍", "maps-services", 1]
       ];
@@ -166,13 +162,21 @@ async function seedPlatforms() {
 
     for (const [name, emoji, slug, sortOrder] of categories) {
       await query(
-        `INSERT INTO categories (platform_id, name, emoji, slug, sort_order)
+        `INSERT INTO categories (
+           platform_id, name, emoji, slug, sort_order
+         )
          VALUES ($1,$2,$3,$4,$5)
          ON CONFLICT (platform_id, slug) DO UPDATE
          SET name = EXCLUDED.name,
              emoji = EXCLUDED.emoji,
              sort_order = EXCLUDED.sort_order`,
-        [p.id, name, emoji, slug, sortOrder]
+        [
+          platform.id,
+          name,
+          emoji,
+          slug,
+          sortOrder
+        ]
       );
     }
   }
@@ -180,7 +184,9 @@ async function seedPlatforms() {
 
 export async function ensureUser(from) {
   await query(
-    `INSERT INTO users (telegram_id, username, first_name, last_name)
+    `INSERT INTO users (
+       telegram_id, username, first_name, last_name
+     )
      VALUES ($1,$2,$3,$4)
      ON CONFLICT (telegram_id) DO UPDATE
      SET username = EXCLUDED.username,
@@ -197,25 +203,44 @@ export async function ensureUser(from) {
 
 export async function getSession(telegramId) {
   const result = await query(
-    `SELECT state, data FROM user_sessions WHERE telegram_id = $1`,
+    `SELECT state, data
+     FROM user_sessions
+     WHERE telegram_id = $1`,
     [telegramId]
   );
-  return result.rows[0] ?? { state: null, data: {} };
+
+  return result.rows[0] ?? {
+    state: null,
+    data: {}
+  };
 }
 
-export async function setSession(telegramId, state, data = {}) {
+export async function setSession(
+  telegramId,
+  state,
+  data = {}
+) {
   await query(
-    `INSERT INTO user_sessions (telegram_id, state, data, updated_at)
+    `INSERT INTO user_sessions (
+       telegram_id, state, data, updated_at
+     )
      VALUES ($1,$2,$3::jsonb,NOW())
      ON CONFLICT (telegram_id) DO UPDATE
      SET state = EXCLUDED.state,
          data = EXCLUDED.data,
          updated_at = NOW()`,
-    [telegramId, state, JSON.stringify(data)]
+    [
+      telegramId,
+      state,
+      JSON.stringify(data)
+    ]
   );
 }
 
 export async function clearSession(telegramId) {
-  await query(`DELETE FROM user_sessions WHERE telegram_id = $1`, [telegramId]);
+  await query(
+    `DELETE FROM user_sessions
+     WHERE telegram_id = $1`,
+    [telegramId]
+  );
 }
-
