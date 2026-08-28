@@ -164,6 +164,13 @@ async function seedPlatformsAndCategories() {
         ["ویو", "👁", "views", 3],
         ["کامنت", "💬", "comments", 4]
       ];
+    } else if (platform.slug === "twitter") {
+      categories = [
+        ["فالوور", "👥", "followers", 1],
+        ["لایک", "❤️", "likes", 2],
+        ["ویو", "👁", "views", 3],
+        ["بقیه خدمات توییتر", "🔹", "other-services", 4]
+      ];
     } else if (platform.slug === "telegram") {
       categories = [
         ["ممبر", "👥", "followers", 1],
@@ -198,6 +205,21 @@ async function seedPlatformsAndCategories() {
           slug,
           sortOrder
         ]
+      );
+    }
+
+    if (platform.slug === "twitter") {
+      await query(
+        `UPDATE categories
+         SET status = FALSE
+         WHERE platform_id = $1
+           AND slug NOT IN (
+             'followers',
+             'likes',
+             'views',
+             'other-services'
+           )`,
+        [platform.id]
       );
     }
 
