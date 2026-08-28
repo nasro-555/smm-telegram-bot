@@ -54,59 +54,44 @@ export async function initDatabase() {
   `);
 
   await query(`
-    CREATE TABLE IF NOT EXISTS providers (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      api_url TEXT,
-      api_key TEXT,
-      status BOOLEAN NOT NULL DEFAULT TRUE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await query(`
-    CREATE TABLE IF NOT EXISTS service_options (
-      id SERIAL PRIMARY KEY,
-      platform_id INT NOT NULL REFERENCES platforms(id) ON DELETE CASCADE,
-      category_id INT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-      provider_id INT REFERENCES providers(id) ON DELETE SET NULL,
-      provider_service_id TEXT,
-      button_name TEXT NOT NULL,
-      description TEXT,
-      min_qty INT NOT NULL DEFAULT 1,
-      max_qty INT NOT NULL DEFAULT 100000,
-      status BOOLEAN NOT NULL DEFAULT TRUE,
-      sort_order INT NOT NULL DEFAULT 0
-    );
-  `);
-
-  await query(`
-    CREATE TABLE IF NOT EXISTS packages (
-      id SERIAL PRIMARY KEY,
-      service_option_id INT NOT NULL REFERENCES service_options(id) ON DELETE CASCADE,
-      quantity INT NOT NULL,
-      price NUMERIC(14,4) NOT NULL,
-      status BOOLEAN NOT NULL DEFAULT TRUE,
-      sort_order INT NOT NULL DEFAULT 0
-    );
-  `);
-
-  await query(`
     CREATE TABLE IF NOT EXISTS orders (
       id BIGSERIAL PRIMARY KEY,
       telegram_id BIGINT NOT NULL REFERENCES users(telegram_id),
-      platform_id INT NOT NULL REFERENCES platforms(id),
-      category_id INT NOT NULL REFERENCES categories(id),
-      service_option_id INT NOT NULL REFERENCES service_options(id),
-      package_id INT NOT NULL REFERENCES packages(id),
+      platform_id INT REFERENCES platforms(id),
+      category_id INT REFERENCES categories(id),
       link TEXT NOT NULL,
       quantity INT NOT NULL,
       charge NUMERIC(14,4) NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
       provider_order_id TEXT,
+      provider_name TEXT,
+      provider_service_id TEXT,
+      service_name TEXT,
+      provider_rate NUMERIC(14,4),
+      selling_rate NUMERIC(14,4),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  const orderColumns = await query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'orders'`
+  );
+  const existingOrderColumns = new Set(orderColumns.rows.map((r) => r.column_name));
+
+  if (existingOrderColumns.has("service_option_id")) {
+    await query(`ALTER TABLE orders ALTER COLUMN service_option_id DROP NOT NULL;`);
+  }
+  if (existingOrderColumns.has("package_id")) {
+    await query(`ALTER TABLE orders ALTER COLUMN package_id DROP NOT NULL;`);
+  }
+
+  await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_name TEXT;`);
+  await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_service_id TEXT;`);
+  await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS service_name TEXT;`);
+  await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_rate NUMERIC(14,4);`);
+  await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS selling_rate NUMERIC(14,4);`);
 
   await query(`
     CREATE TABLE IF NOT EXISTS user_sessions (
@@ -140,7 +125,7 @@ async function seedPlatforms() {
   for (const [name, emoji, slug, sortOrder] of platforms) {
     await query(
       `INSERT INTO platforms (name, emoji, slug, sort_order)
-       VALUES ($1, $2, $3, $4)
+       VALUES ($1,$2,$3,$4)
        ON CONFLICT (slug) DO UPDATE
        SET name = EXCLUDED.name,
            emoji = EXCLUDED.emoji,
@@ -149,41 +134,40 @@ async function seedPlatforms() {
     );
   }
 
-  const genericCats = [
-    ["فالوور / عضو", "👥", "followers", 1],
-    ["لایک", "❤️", "likes", 2],
-    ["ویو", "👁", "views", 3],
-    ["کامنت", "💬", "comments", 4]
-  ];
+  const rows = await query(`SELECT id, slug FROM platforms ORDER BY sort_order`);
 
-  const platformRows = await query(`SELECT id, slug FROM platforms ORDER BY sort_order`);
-  for (const p of platformRows.rows) {
-    let cats = genericCats;
+  for (const p of rows.rows) {
+    let categories = [
+      ["فالوور / عضو", "👥", "followers", 1],
+      ["لایک", "❤️", "likes", 2],
+      ["ویو", "👁", "views", 3],
+      ["کامنت", "💬", "comments", 4]
+    ];
 
     if (p.slug === "youtube") {
-      cats = [
+      categories = [
         ["سابسکرایبر", "👥", "followers", 1],
         ["لایک", "❤️", "likes", 2],
         ["ویو", "👁", "views", 3],
         ["کامنت", "💬", "comments", 4]
       ];
     } else if (p.slug === "telegram") {
-      cats = [
+      categories = [
         ["ممبر", "👥", "followers", 1],
         ["ری‌اکشن", "❤️", "likes", 2],
         ["ویو", "👁", "views", 3],
         ["کامنت", "💬", "comments", 4]
       ];
     } else if (p.slug === "google-maps") {
-      cats = [
+      categories = [
         ["خدمات Google Maps", "📍", "maps-services", 1]
       ];
     }
 
-    for (const [name, emoji, slug, sortOrder] of cats) {
+    for (const [name, emoji, slug, sortOrder] of categories) {
       await query(
         `INSERT INTO categories (platform_id, name, emoji, slug, sort_order)
-         VALUES ($1, $2, $3, $4, $5)
+         VALUES ($1,$2,$3,$4,$5)
          ON CONFLICT (platform_id, slug) DO UPDATE
          SET name = EXCLUDED.name,
              emoji = EXCLUDED.emoji,
@@ -197,7 +181,7 @@ async function seedPlatforms() {
 export async function ensureUser(from) {
   await query(
     `INSERT INTO users (telegram_id, username, first_name, last_name)
-     VALUES ($1, $2, $3, $4)
+     VALUES ($1,$2,$3,$4)
      ON CONFLICT (telegram_id) DO UPDATE
      SET username = EXCLUDED.username,
          first_name = EXCLUDED.first_name,
@@ -222,7 +206,7 @@ export async function getSession(telegramId) {
 export async function setSession(telegramId, state, data = {}) {
   await query(
     `INSERT INTO user_sessions (telegram_id, state, data, updated_at)
-     VALUES ($1, $2, $3::jsonb, NOW())
+     VALUES ($1,$2,$3::jsonb,NOW())
      ON CONFLICT (telegram_id) DO UPDATE
      SET state = EXCLUDED.state,
          data = EXCLUDED.data,
@@ -234,3 +218,4 @@ export async function setSession(telegramId, state, data = {}) {
 export async function clearSession(telegramId) {
   await query(`DELETE FROM user_sessions WHERE telegram_id = $1`, [telegramId]);
 }
+
