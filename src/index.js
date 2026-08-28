@@ -83,7 +83,7 @@ function platformFallback(name) {
   if (value === "tiktok") return "🎵";
   if (value === "youtube") return "▶️";
   if (value === "telegram") return "✈️";
-  if (["twitter / x", "twitter", "x"].includes(value)) return "𝕏";
+  if (["twitter / x", "twitter", "x"].includes(value)) return "✖️";
   if (value === "whatsapp") return "💬";
   if (["kick", "kik"].includes(value)) return "💚";
   if (value === "threads") return "🧵";
