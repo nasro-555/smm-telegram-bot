@@ -12,7 +12,10 @@ import {
 import {
   mainMenu,
   platformKeyboard,
-  categoryKeyboard
+  categoryKeyboard,
+  customEmojiCallback,
+  categoryEmojiId,
+  CUSTOM_EMOJI
 } from "./keyboards.js";
 import {
   listPanels,
@@ -32,8 +35,12 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 
 bot.use(async (ctx, next) => {
   if (ctx.message?.entities) {
-    console.log("EMOJI_ENTITIES:", JSON.stringify(ctx.message.entities));
+    console.log(
+      "EMOJI_ENTITIES:",
+      JSON.stringify(ctx.message.entities)
+    );
   }
+
   return next();
 });
 
@@ -166,17 +173,23 @@ async function servicePanels(
     info.category_slug
   );
 
-  const rows = panels.map((panel) => [
-    Markup.button.callback(
-      `🔹 ${panel.panelName}`,
-      `pv:${panel.providerCode}:${panel.panelCode}:${modeCode(mode)}:${platformId}:${categoryId}`
-    )
-  ]);
+  const rows = panels.map((panel) => {
+    const iconId = categoryEmojiId(panel.label);
+
+    return [
+      customEmojiCallback(
+        panel.panelName,
+        `pv:${panel.providerCode}:${panel.panelCode}:${modeCode(mode)}:${platformId}:${categoryId}`,
+        iconId
+      )
+    ];
+  });
 
   rows.push([
-    Markup.button.callback(
-      "⬅️ برگشت",
-      `${mode}:platform:${platformId}`
+    customEmojiCallback(
+      "برگشت",
+      `${mode}:platform:${platformId}`,
+      CUSTOM_EMOJI.back
     )
   ]);
 
@@ -229,9 +242,10 @@ async function providerPanel(
         `❌ فعلاً هیچ سرویس ${panel.label} از این پنل در دسترس نیست.`,
         Markup.inlineKeyboard([
           [
-            Markup.button.callback(
-              "⬅️ برگشت",
-              `${mode}:category:${platformId}:${categoryId}`
+            customEmojiCallback(
+              "برگشت",
+              `${mode}:category:${platformId}:${categoryId}`,
+              CUSTOM_EMOJI.back
             )
           ]
         ])
@@ -246,9 +260,10 @@ async function providerPanel(
     ]);
 
     rows.push([
-      Markup.button.callback(
-        "⬅️ برگشت",
-        `${mode}:category:${platformId}:${categoryId}`
+      customEmojiCallback(
+        "برگشت",
+        `${mode}:category:${platformId}:${categoryId}`,
+        CUSTOM_EMOJI.back
       )
     ]);
 
@@ -314,15 +329,17 @@ async function providerService(
       extra,
       Markup.inlineKeyboard([
         [
-          Markup.button.callback(
-            "🛒 ایجاد سفارش",
-            `po:${providerCode}:${panelCode}:${platformId}:${categoryId}:${service.service}`
+          customEmojiCallback(
+            "ایجاد سفارش",
+            `po:${providerCode}:${panelCode}:${platformId}:${categoryId}:${service.service}`,
+            CUSTOM_EMOJI.menu.newOrder
           )
         ],
         [
-          Markup.button.callback(
-            "⬅️ برگشت",
-            `pv:${providerCode}:${panelCode}:${modeCode(mode)}:${platformId}:${categoryId}`
+          customEmojiCallback(
+            "برگشت",
+            `pv:${providerCode}:${panelCode}:${modeCode(mode)}:${platformId}:${categoryId}`,
+            CUSTOM_EMOJI.back
           )
         ]
       ])
@@ -871,7 +888,7 @@ bot.action("provider:confirm", async (ctx) => {
       `✅ سفارش ثبت شد.\n\n` +
       `🆔 شماره سفارش: #${inserted.rows[0].id}\n` +
       `📊 تعداد: ${Number(data.quantity).toLocaleString("en-US")}\n` +
-      `💵 م��لغ: $${charge.toFixed(2)}\n` +
+      `💵 مبلغ: $${charge.toFixed(2)}\n` +
       `⏳ وضعیت: Pending`,
       mainMenu()
     );
