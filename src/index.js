@@ -169,7 +169,8 @@ const ORDER_RESULT_EMOJI = {
   quantity: "5071491301443110142",
   amount: "5388803751559586023",
   status: "5927294695158847101",
-  link: "6001078118725456537"
+  link: "6001078118725456537",
+  serviceBullet: "5237813295800408632"
 };
 
 function htmlOrderSummaryTitle() {
@@ -251,7 +252,7 @@ function categoryFallback(name) {
   if (value.includes("کامنت") || value.includes("comment")) return "💬";
   if (value.includes("ویو") || value.includes("view")) return "👁";
   if (value.includes("live")) return "🔴";
-  return "🔹";
+  return tgEmoji(ORDER_RESULT_EMOJI.serviceBullet, "🔹");
 }
 
 function htmlPlatform(name) {
@@ -291,7 +292,7 @@ function htmlInfoLine(key, label, value) {
     orderType: [CUSTOM_EMOJI.info.orderType, "📝"]
   };
 
-  const [id, fallback] = map[key] ?? [null, "🔹"];
+  const [id, fallback] = map[key] ?? [null, tgEmoji(ORDER_RESULT_EMOJI.serviceBullet, "🔹")];
   const icon = id ? tgEmoji(id, fallback) : fallback;
   return `${icon} ${escapeHtml(label)}: ${escapeHtml(value)}`;
 }
@@ -1037,9 +1038,10 @@ async function replyMenuOrders(ctx) {
       !order.cancel_requested_at
     ) {
       buttons.push(
-        Markup.button.callback(
-          `❌ کنسل #${order.id}`,
-          `order:cancel_api:${order.id}`
+        customEmojiCallback(
+          `کنسل #${order.id}`,
+          `order:cancel_api:${order.id}`,
+          "5348027250446967673"
         )
       );
     }
@@ -1336,7 +1338,7 @@ bot.on("text", async (ctx) => {
 
     const confirmText =
       `${htmlOrderSummaryTitle()}\n\n` +
-      `🔹 سرویس: ${htmlServiceName(data.service_name)}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.serviceBullet, tgEmoji(ORDER_RESULT_EMOJI.serviceBullet, "🔹"))} سرویس: ${htmlServiceName(data.service_name)}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${Number(data.quantity).toLocaleString("en-US")}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} قیمت نهایی: $${Number(data.charge).toFixed(2)}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.link, "🔗")} لینک: ${escapeHtml(data.link)}\n\n` +
@@ -1427,7 +1429,7 @@ bot.on("text", async (ctx) => {
 
     const confirmText =
       `${htmlOrderSummaryTitle()}\n\n` +
-      `🔹 سرویس: ${htmlServiceName(data.service_name)}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.serviceBullet, tgEmoji(ORDER_RESULT_EMOJI.serviceBullet, "🔹"))} سرویس: ${htmlServiceName(data.service_name)}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد کامنت: ${quantity.toLocaleString("en-US")}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} قیمت نهایی: $${charge.toFixed(2)}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.link, "🔗")} لینک: ${escapeHtml(data.link)}\n\n` +
