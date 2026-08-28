@@ -547,12 +547,27 @@ async function servicePanels(
 }
 
 function shortName(name, max = 38) {
-  const clean = String(name)
+  // Normalize through UTF-8 first so any lone/broken surrogate
+  // coming from a provider becomes the replacement character.
+  const clean = Buffer
+    .from(String(name ?? ""), "utf8")
+    .toString("utf8")
     .replace(/\s+/g, " ")
     .trim();
 
-  return clean.length > max
-    ? clean.slice(0, max - 1) + "…"
+  // Do not cut an emoji / flag / joined emoji sequence in half.
+  const segmenter = new Intl.Segmenter(
+    "en",
+    { granularity: "grapheme" }
+  );
+
+  const graphemes = Array.from(
+    segmenter.segment(clean),
+    (part) => part.segment
+  );
+
+  return graphemes.length > max
+    ? graphemes.slice(0, max - 1).join("") + "…"
     : clean;
 }
 
