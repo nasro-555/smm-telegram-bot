@@ -167,9 +167,12 @@ async function seedPlatformsAndCategories() {
     } else if (platform.slug === "telegram") {
       categories = [
         ["ممبر", "👥", "followers", 1],
-        ["ری‌اکشن", "❤️", "likes", 2],
-        ["ویو", "👁", "views", 3],
-        ["کامنت", "💬", "comments", 4]
+        ["ممبر پرمیوم", "👑", "premium-members", 2],
+        ["ری‌اکشن", "❤️", "likes", 3],
+        ["ری‌اکشن خودکار", "❤️", "auto-reactions", 4],
+        ["ری‌اکشن استوری", "❤️", "story-reactions", 5],
+        ["ویو", "👁", "views", 6],
+        ["ویو خودکار", "👁", "auto-views", 7]
       ];
     } else if (platform.slug === "google-maps") {
       categories = [
@@ -186,6 +189,7 @@ async function seedPlatformsAndCategories() {
          ON CONFLICT (platform_id, slug) DO UPDATE
          SET name = EXCLUDED.name,
              emoji = EXCLUDED.emoji,
+             status = TRUE,
              sort_order = EXCLUDED.sort_order`,
         [
           platform.id,
@@ -194,6 +198,24 @@ async function seedPlatformsAndCategories() {
           slug,
           sortOrder
         ]
+      );
+    }
+
+    if (platform.slug === "telegram") {
+      await query(
+        `UPDATE categories
+         SET status = FALSE
+         WHERE platform_id = $1
+           AND slug NOT IN (
+             'followers',
+             'premium-members',
+             'likes',
+             'auto-reactions',
+             'story-reactions',
+             'views',
+             'auto-views'
+           )`,
+        [platform.id]
       );
     }
   }
