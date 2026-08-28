@@ -64,13 +64,18 @@ async function home(ctx) {
   await clearSession(ctx.from.id);
 
   const text =
-    "👋 خوش آمدید\n\n" +
+    '<tg-emoji emoji-id="5420105073780862539">👋</tg-emoji> خوش آمدید به AFPLAY\n\n' +
     "یکی از گزینه‌های زیر را انتخاب کنید:";
 
+  const menu = {
+    parse_mode: "HTML",
+    ...mainMenu()
+  };
+
   if (ctx.callbackQuery) {
-    await ctx.editMessageText(text, mainMenu());
+    await ctx.editMessageText(text, menu);
   } else {
-    await ctx.reply(text, mainMenu());
+    await ctx.reply(text, menu);
   }
 }
 
@@ -82,14 +87,20 @@ async function platforms(ctx, mode) {
      ORDER BY sort_order, id`
   );
 
+  const platformTitleEmoji =
+    '<tg-emoji emoji-id="5398012024003246287">📱</tg-emoji>';
+
   const title =
     mode === "order"
-      ? "📱 برای کدام برنامه می‌خواهید سفارش ثبت کنید؟"
-      : "📱 قیمت خدمات کدام برنامه را می‌خواهید؟";
+      ? `${platformTitleEmoji} برای کدام برنامه می‌خواهید سفارش ثبت کنید؟`
+      : `${platformTitleEmoji} قیمت خدمات کدام برنامه را می‌خواهید؟`;
 
   await ctx.editMessageText(
     title,
-    platformKeyboard(result.rows, mode)
+    {
+      parse_mode: "HTML",
+      ...platformKeyboard(result.rows, mode)
+    }
   );
 }
 
