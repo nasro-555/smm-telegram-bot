@@ -1,5 +1,6 @@
 import { INSTAGRAM_PANELS } from "./instagram.js";
 import { FACEBOOK_PANELS } from "./facebook.js";
+import { TIKTOK_PANELS } from "./tiktok.js";
 import {
   getAllServices,
   createSmmxOrder,
@@ -12,7 +13,8 @@ export const providerName = "smmxserver";
 
 const PANEL_LIST = [
   ...INSTAGRAM_PANELS,
-  ...FACEBOOK_PANELS
+  ...FACEBOOK_PANELS,
+  ...TIKTOK_PANELS
 ];
 
 const PANELS = new Map(
