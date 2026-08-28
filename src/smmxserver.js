@@ -273,3 +273,13 @@ export async function getProviderBalance() {
   });
 }
 
+
+// Backward-compatibility aliases for older bot versions.
+// Keeping these prevents a startup crash if an older index.js is temporarily deployed.
+export async function getFollowerServices() {
+  return getServices("followers");
+}
+
+export async function getFollowerService(serviceId) {
+  return getService("followers", serviceId);
+}
