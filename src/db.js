@@ -100,7 +100,7 @@ async function seedPlatformsAndCategories() {
     ["Telegram", "✈️", "telegram", 5],
     ["Twitter / X", "𝕏", "twitter", 6],
     ["WhatsApp", "💬", "whatsapp", 7],
-    ["Kik", "💚", "kik", 8],
+    ["Kick", "💚", "kik", 8],
     ["Threads", "🧵", "threads", 9],
     ["LinkedIn", "💼", "linkedin", 10],
     ["Google Maps", "📍", "google-maps", 11],
@@ -142,8 +142,8 @@ async function seedPlatformsAndCategories() {
       ];
     } else if (platform.slug === "youtube") {
       categories = [
-        ["سابسکرایبر", "👥", "followers", 1],
-        ["لایک", "❤️", "likes", 2],
+        ["Subscriber / ممبر", "👥", "followers", 1],
+        ["Like", "❤️", "likes", 2],
         ["ویو", "👁", "views", 3],
         ["کامنت", "💬", "comments", 4]
       ];

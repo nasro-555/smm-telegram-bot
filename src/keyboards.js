@@ -3,7 +3,7 @@ import { Markup } from "telegraf";
 export const CUSTOM_EMOJI = {
   platforms: {
     instagram: "5319160079465857105",
-    facebook: "5474348994605891991",
+    facebook: "5323261730283863478",
     tiktok: "5327982530702359565",
     youtube: "5334681713316479679",
     telegram: "5330237710655306682",
@@ -31,6 +31,14 @@ export const CUSTOM_EMOJI = {
     views: "5386638267703635704",
     live: "6280793816702126346"
   },
+  info: {
+    platformTitle: "5398012024003246287",
+    welcome: "5420105073780862539",
+    price: "5226670260848962179",
+    min: "5224268021215804264",
+    max: "5224491114702060799",
+    orderType: "5350427505805238170"
+  },
   back: "5983279327574233274"
 };
 
@@ -47,7 +55,7 @@ function normalizeName(value) {
 }
 
 export function platformEmojiId(platform) {
-  const name = normalizeName(platform?.name);
+  const name = normalizeName(platform?.name ?? platform);
 
   if (name === "instagram") return CUSTOM_EMOJI.platforms.instagram;
   if (name === "facebook") return CUSTOM_EMOJI.platforms.facebook;
@@ -94,18 +102,11 @@ export function categoryEmojiId(categoryOrLabel) {
     return CUSTOM_EMOJI.categories.comments;
   }
 
-  if (
-    name.includes("ویو") ||
-    name.includes("view")
-  ) {
+  if (name.includes("ویو") || name.includes("view")) {
     return CUSTOM_EMOJI.categories.views;
   }
 
-  if (
-    name.includes("live stream") ||
-    name.includes("لایو") ||
-    name.includes("live")
-  ) {
+  if (name.includes("live stream") || name.includes("لایو") || name.includes("live")) {
     return CUSTOM_EMOJI.categories.live;
   }
 
@@ -191,40 +192,6 @@ export function categoryKeyboard(categories, mode, platformId) {
 
   rows.push([
     customEmojiCallback("برگشت", `${mode}:platforms`, CUSTOM_EMOJI.back)
-  ]);
-
-  return Markup.inlineKeyboard(rows);
-}
-
-export function serviceKeyboard(services, mode, platformId, categoryId) {
-  const rows = services.map((service) => [
-    Markup.button.callback(
-      service.button_name,
-      `${mode}:service:${platformId}:${categoryId}:${service.id}`
-    )
-  ]);
-
-  rows.push([
-    customEmojiCallback(
-      "برگشت",
-      `${mode}:back_categories:${platformId}`,
-      CUSTOM_EMOJI.back
-    )
-  ]);
-
-  return Markup.inlineKeyboard(rows);
-}
-
-export function packageKeyboard(packages, mode, serviceId) {
-  const rows = packages.map((pkg) => [
-    Markup.button.callback(
-      `${Number(pkg.quantity).toLocaleString("en-US")} — $${Number(pkg.price).toFixed(2)}`,
-      `${mode}:package:${serviceId}:${pkg.id}`
-    )
-  ]);
-
-  rows.push([
-    customEmojiCallback("برگشت", "menu:home", CUSTOM_EMOJI.back)
   ]);
 
   return Markup.inlineKeyboard(rows);

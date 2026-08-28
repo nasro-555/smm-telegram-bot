@@ -15,6 +15,7 @@ import {
   categoryKeyboard,
   customEmojiCallback,
   categoryEmojiId,
+  platformEmojiId,
   CUSTOM_EMOJI
 } from "./keyboards.js";
 import {
@@ -52,6 +53,110 @@ function modeName(code) {
   return code === "p" ? "price" : "order";
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function tgEmoji(id, fallback) {
+  return `<tg-emoji emoji-id="${String(id)}">${fallback}</tg-emoji>`;
+}
+
+function normalizeName(value) {
+  return String(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function platformFallback(name) {
+  const value = normalizeName(name);
+  if (value === "instagram") return "📸";
+  if (value === "facebook") return "📘";
+  if (value === "tiktok") return "🎵";
+  if (value === "youtube") return "▶️";
+  if (value === "telegram") return "✈️";
+  if (["twitter / x", "twitter", "x"].includes(value)) return "𝕏";
+  if (value === "whatsapp") return "💬";
+  if (["kick", "kik"].includes(value)) return "💚";
+  if (value === "threads") return "🧵";
+  if (["linkedin", "linkdin"].includes(value)) return "💼";
+  if (["google maps", "google map"].includes(value)) return "📍";
+  if (value === "likee") return "❤️";
+  if (value === "snapchat") return "👻";
+  return "📱";
+}
+
+function categoryFallback(name) {
+  const value = normalizeName(name);
+  if (
+    value.includes("فالوور") ||
+    value.includes("ممبر") ||
+    value.includes("subscriber") ||
+    value.includes("member") ||
+    value.includes("سابسکرایبر")
+  ) return "👥";
+  if (
+    value.includes("لایک") ||
+    value.includes("like") ||
+    value.includes("ری‌اکشن") ||
+    value.includes("reaction")
+  ) return "❤️";
+  if (value.includes("کامنت") || value.includes("comment")) return "💬";
+  if (value.includes("ویو") || value.includes("view")) return "👁";
+  if (value.includes("live")) return "🔴";
+  return "🔹";
+}
+
+function htmlPlatform(name) {
+  const id = platformEmojiId(name);
+  const fallback = platformFallback(name);
+  const icon = id ? tgEmoji(id, fallback) : fallback;
+  return `${icon} ${escapeHtml(name)}`;
+}
+
+function htmlCategory(name) {
+  const id = categoryEmojiId(name);
+  const fallback = categoryFallback(name);
+  const icon = id ? tgEmoji(id, fallback) : fallback;
+  return `${icon} ${escapeHtml(name)}`;
+}
+
+function htmlMenuTitle(key, text) {
+  const map = {
+    newOrder: [CUSTOM_EMOJI.menu.newOrder, "🛒"],
+    prices: [CUSTOM_EMOJI.menu.prices, "🏷️"],
+    orders: [CUSTOM_EMOJI.menu.orders, "📦"],
+    balance: [CUSTOM_EMOJI.menu.balance, "💰"],
+    deposit: [CUSTOM_EMOJI.menu.deposit, "💳"],
+    support: [CUSTOM_EMOJI.menu.support, "🎧"]
+  };
+
+  const [id, fallback] = map[key] ?? [null, "✨"];
+  const icon = id ? tgEmoji(id, fallback) : fallback;
+  return `${icon} ${escapeHtml(text)}`;
+}
+
+function htmlInfoLine(key, label, value) {
+  const map = {
+    price: [CUSTOM_EMOJI.info.price, "💵"],
+    min: [CUSTOM_EMOJI.info.min, "⬇️"],
+    max: [CUSTOM_EMOJI.info.max, "⬆️"],
+    orderType: [CUSTOM_EMOJI.info.orderType, "📝"]
+  };
+
+  const [id, fallback] = map[key] ?? [null, "🔹"];
+  const icon = id ? tgEmoji(id, fallback) : fallback;
+  return `${icon} ${escapeHtml(label)}: ${escapeHtml(value)}`;
+}
+
+function htmlText(text, keyboard) {
+  return {
+    parse_mode: "HTML",
+    ...(keyboard ?? {})
+  };
+}
+
 async function answerCb(ctx, text) {
   try {
     if (ctx.callbackQuery) {
@@ -64,18 +169,15 @@ async function home(ctx) {
   await clearSession(ctx.from.id);
 
   const text =
-    '<tg-emoji emoji-id="5420105073780862539">👋</tg-emoji> خوش آمدید به AFPLAY\n\n' +
+    `${tgEmoji(CUSTOM_EMOJI.info.welcome, "👋")} خوش آمدید به AFPLAY\n\n` +
     "یکی از گزینه‌های زیر را انتخاب کنید:";
 
-  const menu = {
-    parse_mode: "HTML",
-    ...mainMenu()
-  };
+  const options = htmlText(text, mainMenu());
 
   if (ctx.callbackQuery) {
-    await ctx.editMessageText(text, menu);
+    await ctx.editMessageText(text, options);
   } else {
-    await ctx.reply(text, menu);
+    await ctx.reply(text, options);
   }
 }
 
@@ -87,8 +189,10 @@ async function platforms(ctx, mode) {
      ORDER BY sort_order, id`
   );
 
-  const platformTitleEmoji =
-    '<tg-emoji emoji-id="5398012024003246287">📱</tg-emoji>';
+  const platformTitleEmoji = tgEmoji(
+    CUSTOM_EMOJI.info.platformTitle,
+    "📱"
+  );
 
   const title =
     mode === "order"
@@ -97,10 +201,7 @@ async function platforms(ctx, mode) {
 
   await ctx.editMessageText(
     title,
-    {
-      parse_mode: "HTML",
-      ...platformKeyboard(result.rows, mode)
-    }
+    htmlText(title, platformKeyboard(result.rows, mode))
   );
 }
 
@@ -130,16 +231,20 @@ async function categories(ctx, mode, platformId) {
   const platform = platformResult.rows[0];
 
   const title =
-    mode === "order"
-      ? `${platform.emoji} ${platform.name}\n\nنوع خدمات را انتخاب کنید:`
-      : `${platform.emoji} ${platform.name}\n\nقیمت کدام خدمات را می‌خواهید؟`;
+    `${htmlPlatform(platform.name)}\n\n` +
+    (mode === "order"
+      ? "نوع خدمات را انتخاب کنید:"
+      : "قیمت کدام خدمات را می‌خواهید؟");
 
   await ctx.editMessageText(
     title,
-    categoryKeyboard(
-      categoriesResult.rows,
-      mode,
-      platformId
+    htmlText(
+      title,
+      categoryKeyboard(
+        categoriesResult.rows,
+        mode,
+        platformId
+      )
     )
   );
 }
@@ -159,6 +264,17 @@ async function categoryInfo(platformId, categoryId) {
   );
 
   return result.rows[0] ?? null;
+}
+
+function serviceTitle(info, serviceName) {
+  if (!info) {
+    return escapeHtml(serviceName);
+  }
+
+  return (
+    `${htmlPlatform(info.platform_name)}\n` +
+    `${htmlCategory(serviceName)}`
+  );
 }
 
 async function servicePanels(
@@ -204,18 +320,23 @@ async function servicePanels(
     )
   ]);
 
+  const title =
+    `${htmlPlatform(info.platform_name)}\n` +
+    `${htmlCategory(info.category_name)}\n\n`;
+
   if (!panels.length) {
+    const text = title + "هنوز سرویسی برای این بخش اضافه نشده است.";
     return ctx.editMessageText(
-      `${info.category_emoji} ${info.category_name}\n\n` +
-      "هنوز سرویسی برای این بخش اضافه نشده است.",
-      Markup.inlineKeyboard(rows)
+      text,
+      htmlText(text, Markup.inlineKeyboard(rows))
     );
   }
 
+  const text = title + "پنل موردنظر را انتخاب کنید:";
+
   await ctx.editMessageText(
-    `${info.category_emoji} ${info.category_name}\n\n` +
-    "پنل موردنظر را انتخاب کنید:",
-    Markup.inlineKeyboard(rows)
+    text,
+    htmlText(text, Markup.inlineKeyboard(rows))
   );
 }
 
@@ -241,6 +362,11 @@ async function providerPanel(
     const panel = getPanel(
       providerCode,
       panelCode
+    );
+
+    const info = await categoryInfo(
+      platformId,
+      categoryId
     );
 
     const services = await getServices(
@@ -278,10 +404,14 @@ async function providerPanel(
       )
     ]);
 
+    const text =
+      `${htmlPlatform(info?.platform_name ?? panel.platformSlug)}\n` +
+      `${htmlCategory(panel.panelName)}\n\n` +
+      "یکی از سرویس‌ها را انتخاب کنید:";
+
     await ctx.editMessageText(
-      `🔹 ${panel.panelName}\n\n` +
-      "یکی از سرویس‌ها را انتخاب کنید:",
-      Markup.inlineKeyboard(rows)
+      text,
+      htmlText(text, Markup.inlineKeyboard(rows))
     );
   } catch (error) {
     console.error(
@@ -306,11 +436,6 @@ async function providerService(
   serviceId
 ) {
   try {
-    const panel = getPanel(
-      providerCode,
-      panelCode
-    );
-
     const service = await getService(
       providerCode,
       panelCode,
@@ -324,36 +449,47 @@ async function providerService(
       );
     }
 
+    const info = await categoryInfo(
+      platformId,
+      categoryId
+    );
+
     let extra = "";
 
     if (service.customComments) {
       extra =
-        "\n📝 نوع سفارش: کامنت دلخواه\n" +
-        "هر کامنت را در یک خط جدا وارد می‌کنید.";
+        `\n${htmlInfoLine("orderType", "نوع سفارش", "کامنت دلخواه")}` +
+        "\nهر کامنت را در یک خط جدا وارد می‌کنید.";
     }
 
+    const text =
+      `${serviceTitle(info, service.name)}\n\n` +
+      `${htmlInfoLine("price", "قیمت هر 1000", `$${service.sellingRate.toFixed(2)}`)}\n` +
+      `${htmlInfoLine("min", "حداقل سفارش", service.min.toLocaleString("en-US"))}\n` +
+      `${htmlInfoLine("max", "حداکثر سفارش", service.max.toLocaleString("en-US"))}` +
+      extra;
+
     await ctx.editMessageText(
-      `${panel.emoji} ${service.name}\n\n` +
-      `💵 قیمت هر 1000: $${service.sellingRate.toFixed(2)}\n` +
-      `⬇️ حداقل سفارش: ${service.min.toLocaleString("en-US")}\n` +
-      `⬆️ حداکثر سفارش: ${service.max.toLocaleString("en-US")}` +
-      extra,
-      Markup.inlineKeyboard([
-        [
-          customEmojiCallback(
-            "ایجاد سفارش",
-            `po:${providerCode}:${panelCode}:${platformId}:${categoryId}:${service.service}`,
-            CUSTOM_EMOJI.menu.newOrder
-          )
-        ],
-        [
-          customEmojiCallback(
-            "برگشت",
-            `pv:${providerCode}:${panelCode}:${modeCode(mode)}:${platformId}:${categoryId}`,
-            CUSTOM_EMOJI.back
-          )
-        ]
-      ])
+      text,
+      htmlText(
+        text,
+        Markup.inlineKeyboard([
+          [
+            customEmojiCallback(
+              "ایجاد سفارش",
+              `po:${providerCode}:${panelCode}:${platformId}:${categoryId}:${service.service}`,
+              CUSTOM_EMOJI.menu.newOrder
+            )
+          ],
+          [
+            customEmojiCallback(
+              "برگشت",
+              `pv:${providerCode}:${panelCode}:${modeCode(mode)}:${platformId}:${categoryId}`,
+              CUSTOM_EMOJI.back
+            )
+          ]
+        ])
+      )
     );
   } catch (error) {
     console.error(
@@ -507,11 +643,6 @@ bot.action(
       const categoryId = Number(ctx.match[4]);
       const serviceId = Number(ctx.match[5]);
 
-      const panel = getPanel(
-        providerCode,
-        panelCode
-      );
-
       const service = await getService(
         providerCode,
         panelCode,
@@ -524,6 +655,11 @@ bot.action(
           mainMenu()
         );
       }
+
+      const info = await categoryInfo(
+        platformId,
+        categoryId
+      );
 
       const sessionData = {
         provider_code: providerCode,
@@ -547,13 +683,18 @@ bot.action(
           sessionData
         );
 
-        return ctx.editMessageText(
-          `${panel.emoji} ${service.name}\n\n` +
-          `💵 قیمت هر 1000: $${service.sellingRate.toFixed(2)}\n` +
-          `⬇️ حداقل: ${service.min.toLocaleString("en-US")}\n` +
-          `⬆️ حداکثر: ${service.max.toLocaleString("en-US")}\n\n` +
+        const text =
+          `${serviceTitle(info, service.name)}\n\n` +
+          `${htmlInfoLine("price", "قیمت هر 1000", `$${service.sellingRate.toFixed(2)}`)}\n` +
+          `${htmlInfoLine("min", "حداقل سفارش", service.min.toLocaleString("en-US"))}\n` +
+          `${htmlInfoLine("max", "حداکثر سفارش", service.max.toLocaleString("en-US"))}\n` +
+          `${htmlInfoLine("orderType", "نوع سفارش", "کامنت دلخواه")}\n\n` +
           "ابتدا لینک موردنظر را ارسال کنید.\n\n" +
-          "برای لغو: /cancel"
+          "برای لغو: /cancel";
+
+        return ctx.editMessageText(
+          text,
+          htmlText(text)
         );
       }
 
@@ -563,13 +704,17 @@ bot.action(
         sessionData
       );
 
-      await ctx.editMessageText(
-        `${panel.emoji} ${service.name}\n\n` +
-        `💵 قیمت هر 1000: $${service.sellingRate.toFixed(2)}\n` +
-        `⬇️ حداقل: ${service.min.toLocaleString("en-US")}\n` +
-        `⬆️ حداکثر: ${service.max.toLocaleString("en-US")}\n\n` +
+      const text =
+        `${serviceTitle(info, service.name)}\n\n` +
+        `${htmlInfoLine("price", "قیمت هر 1000", `$${service.sellingRate.toFixed(2)}`)}\n` +
+        `${htmlInfoLine("min", "حداقل سفارش", service.min.toLocaleString("en-US"))}\n` +
+        `${htmlInfoLine("max", "حداکثر سفارش", service.max.toLocaleString("en-US"))}\n\n` +
         "تعداد موردنظر را به صورت عدد ارسال کنید.\n\n" +
-        "برای لغو: /cancel"
+        "برای لغو: /cancel";
+
+      await ctx.editMessageText(
+        text,
+        htmlText(text)
       );
     } catch (error) {
       console.error(
@@ -936,9 +1081,13 @@ bot.action("menu:balance", async (ctx) => {
     result.rows[0]?.balance ?? 0
   );
 
+  const text =
+    `${htmlMenuTitle("balance", "موجودی من")}\n\n` +
+    `موجودی شما: $${balance.toFixed(2)}`;
+
   await ctx.editMessageText(
-    `💵 موجودی شما: $${balance.toFixed(2)}`,
-    mainMenu()
+    text,
+    htmlText(text, mainMenu())
   );
 });
 
@@ -960,13 +1109,17 @@ bot.action("menu:orders", async (ctx) => {
   );
 
   if (!result.rowCount) {
+    const emptyText =
+      `${htmlMenuTitle("orders", "سفارش‌های من")}\n\n` +
+      "هنوز سفارشی ندارید.";
+
     return ctx.editMessageText(
-      "📦 هنوز سفارشی ندارید.",
-      mainMenu()
+      emptyText,
+      htmlText(emptyText, mainMenu())
     );
   }
 
-  const text = result.rows
+  const listText = result.rows
     .map(
       (order) =>
         `#${order.id} | ${order.service_name ?? "Service"}\n` +
@@ -975,18 +1128,25 @@ bot.action("menu:orders", async (ctx) => {
     )
     .join("\n\n");
 
+  const text =
+    `${htmlMenuTitle("orders", "سفارش‌های من")}\n\n${listText}`;
+
   await ctx.editMessageText(
-    `📦 سفارش‌های من\n\n${text}`,
-    mainMenu()
+    text,
+    htmlText(text, mainMenu())
   );
 });
 
 bot.action("menu:deposit", async (ctx) => {
   await answerCb(ctx);
 
+  const text =
+    `${htmlMenuTitle("deposit", "افزایش موجودی")}\n\n` +
+    "روش پرداخت را در مرحله بعد اضافه می‌کنیم.";
+
   await ctx.editMessageText(
-    "💳 افزایش موجودی\n\nروش پرداخت را در مرحله بعد اضافه می‌کنیم.",
-    mainMenu()
+    text,
+    htmlText(text, mainMenu())
   );
 });
 
@@ -997,9 +1157,12 @@ bot.action("menu:support", async (ctx) => {
     process.env.SUPPORT_USERNAME ||
     "@YourSupportUsername";
 
+  const text =
+    `${htmlMenuTitle("support", "پشتیبانی")}\n\n${escapeHtml(support)}`;
+
   await ctx.editMessageText(
-    `🎧 پشتیبانی\n\n${support}`,
-    mainMenu()
+    text,
+    htmlText(text, mainMenu())
   );
 });
 
