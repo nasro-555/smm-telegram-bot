@@ -16,7 +16,8 @@ import {
   customEmojiCallback,
   categoryEmojiId,
   platformEmojiId,
-  CUSTOM_EMOJI
+  CUSTOM_EMOJI,
+  persistentMenu
 } from "./keyboards.js";
 import {
   listPanels,
@@ -328,6 +329,11 @@ async function home(ctx) {
   if (ctx.callbackQuery) {
     await ctx.editMessageText(text, options);
   } else {
+    await ctx.reply(
+      "منوی سریع AFPLAY فعال شد.",
+      persistentMenu()
+    );
+
     await ctx.reply(text, options);
   }
 }
@@ -892,12 +898,236 @@ bot.command("cancel", async (ctx) => {
   );
 });
 
+async function replyMenuPlatforms(ctx, mode) {
+  await clearSession(ctx.from.id);
+
+  const result = await query(
+    `SELECT id, name, emoji
+     FROM platforms
+     WHERE status = TRUE
+     ORDER BY sort_order, id`
+  );
+
+  const icon = tgEmoji(
+    CUSTOM_EMOJI.info.platformTitle,
+    "📱"
+  );
+
+  const title =
+    mode === "order"
+      ? `${icon} برای کدام برنامه می‌خواهید سفارش ثبت کنید؟`
+      : `${icon} قیمت خدمات کدام برنامه را می‌خواهید؟`;
+
+  return ctx.reply(
+    title,
+    htmlText(
+      title,
+      platformKeyboard(result.rows, mode)
+    )
+  );
+}
+
+async function replyMenuBalance(ctx) {
+  await clearSession(ctx.from.id);
+
+  const result = await query(
+    `SELECT balance
+     FROM users
+     WHERE telegram_id = $1`,
+    [ctx.from.id]
+  );
+
+  const balance = Number(
+    result.rows[0]?.balance ?? 0
+  );
+
+  const text =
+    `${htmlMenuTitle("balance", "موجودی من")}\\n\\n` +
+    `موجودی شما: $${balance.toFixed(2)}`;
+
+  return ctx.reply(
+    text,
+    htmlText(text, mainMenu())
+  );
+}
+
+async function replyMenuOrders(ctx) {
+  await clearSession(ctx.from.id);
+
+  const result = await query(
+    `SELECT
+       id,
+       quantity,
+       charge,
+       status,
+       service_name,
+       refill_supported,
+       cancel_supported,
+       cancel_closed,
+       cancel_requested_at,
+       refill_id,
+       refill_requested_at
+     FROM orders
+     WHERE telegram_id = $1
+     ORDER BY id DESC
+     LIMIT 10`,
+    [ctx.from.id]
+  );
+
+  if (!result.rowCount) {
+    const text =
+      `${htmlMenuTitle("orders", "سفارش‌های من")}\\n\\n` +
+      "هنوز سفارشی ندارید.";
+
+    return ctx.reply(
+      text,
+      htmlText(text, mainMenu())
+    );
+  }
+
+  const listText = result.rows
+    .map(
+      (order) =>
+        `#${order.id} | ${htmlServiceName(order.service_name ?? "Service")}\\n` +
+        `تعداد: ${Number(order.quantity).toLocaleString("en-US")} | ` +
+        `$${Number(order.charge).toFixed(2)} | ${order.status}`
+    )
+    .join("\\n\\n");
+
+  const text =
+    `${htmlMenuTitle("orders", "سفارش‌های من")}\\n\\n${listText}`;
+
+  const controlRows = [];
+
+  for (const order of result.rows) {
+    const buttons = [];
+
+    if (
+      order.refill_supported &&
+      !order.refill_id
+    ) {
+      buttons.push(
+        Markup.button.callback(
+          `♻️ جبران #${order.id}`,
+          `order:refill:${order.id}`
+        )
+      );
+    }
+
+    if (
+      order.cancel_supported &&
+      !order.cancel_closed &&
+      !order.cancel_requested_at
+    ) {
+      buttons.push(
+        Markup.button.callback(
+          `❌ کنسل #${order.id}`,
+          `order:cancel_api:${order.id}`
+        )
+      );
+    }
+
+    if (buttons.length) {
+      controlRows.push(buttons);
+    }
+  }
+
+  controlRows.push(
+    ...mainMenu().reply_markup.inline_keyboard
+  );
+
+  return ctx.reply(
+    text,
+    htmlText(
+      text,
+      Markup.inlineKeyboard(controlRows)
+    )
+  );
+}
+
+async function replyMenuDeposit(ctx) {
+  await clearSession(ctx.from.id);
+
+  const text =
+    `${htmlMenuTitle("deposit", "افزایش موجودی")}\\n\\n` +
+    "روش پرداخت را انتخاب کنید:";
+
+  return ctx.reply(
+    text,
+    htmlText(
+      text,
+      Markup.inlineKeyboard([
+        [
+          customEmojiCallback(
+            "Heleket",
+            "deposit:heleket",
+            CUSTOM_EMOJI.menu.deposit
+          )
+        ],
+        [
+          customEmojiCallback(
+            "برگشت",
+            "menu:home",
+            CUSTOM_EMOJI.back
+          )
+        ]
+      ])
+    )
+  );
+}
+
+async function replyMenuSupport(ctx) {
+  await clearSession(ctx.from.id);
+
+  const support =
+    process.env.SUPPORT_USERNAME ||
+    "@YourSupportUsername";
+
+  const text =
+    `${htmlMenuTitle("support", "پشتیبانی")}\\n\\n${escapeHtml(support)}`;
+
+  return ctx.reply(
+    text,
+    htmlText(text, mainMenu())
+  );
+}
+
 bot.on("text", async (ctx) => {
   const session = await getSession(
     ctx.from.id
   );
 
   const text = ctx.message.text.trim();
+
+  if (text === "ایجاد سفارش جدید") {
+    return replyMenuPlatforms(
+      ctx,
+      "order"
+    );
+  }
+
+  if (text === "قیمت بسته‌ها") {
+    return replyMenuPlatforms(
+      ctx,
+      "price"
+    );
+  }
+
+  if (text === "موجودی من") {
+    return replyMenuBalance(ctx);
+  }
+
+  if (text === "سفارش‌های من") {
+    return replyMenuOrders(ctx);
+  }
+
+  if (text === "افزایش موجودی") {
+    return replyMenuDeposit(ctx);
+  }
+
+  if (text === "پشتیبانی") {
+    return replyMenuSupport(ctx);
+  }
 
   if (session.state === "deposit_heleket_amount") {
     const amount = Number(

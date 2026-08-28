@@ -206,3 +206,53 @@ export function categoryKeyboard(categories, mode, platformId) {
 
   return Markup.inlineKeyboard(rows);
 }
+
+export const persistentMenu = () => ({
+  reply_markup: {
+    keyboard: [
+      [
+        {
+          text: "ایجاد سفارش جدید",
+          icon_custom_emoji_id: CUSTOM_EMOJI.menu.newOrder,
+          style: "success"
+        }
+      ],
+      [
+        {
+          text: "قیمت بسته‌ها",
+          icon_custom_emoji_id: CUSTOM_EMOJI.menu.prices,
+          style: "primary"
+        }
+      ],
+      [
+        {
+          text: "سفارش‌های من",
+          icon_custom_emoji_id: CUSTOM_EMOJI.menu.orders,
+          style: "primary"
+        },
+        {
+          text: "موجودی من",
+          icon_custom_emoji_id: CUSTOM_EMOJI.menu.balance,
+          style: "primary"
+        }
+      ],
+      [
+        {
+          text: "افزایش موجودی",
+          icon_custom_emoji_id: CUSTOM_EMOJI.menu.deposit,
+          style: "success"
+        },
+        {
+          text: "پشتیبانی",
+          icon_custom_emoji_id: CUSTOM_EMOJI.menu.support,
+          style: "danger"
+        }
+      ]
+    ],
+    is_persistent: true,
+    resize_keyboard: true,
+    one_time_keyboard: false,
+    input_field_placeholder: "یکی از گزینه‌ها را انتخاب کنید"
+  }
+});
+
