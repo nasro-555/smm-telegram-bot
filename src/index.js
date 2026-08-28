@@ -30,6 +30,13 @@ if (!process.env.BOT_TOKEN) {
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+bot.use(async (ctx, next) => {
+  if (ctx.message?.entities) {
+    console.log("EMOJI_ENTITIES:", JSON.stringify(ctx.message.entities));
+  }
+  return next();
+});
+
 function modeCode(mode) {
   return mode === "price" ? "p" : "o";
 }
@@ -864,7 +871,7 @@ bot.action("provider:confirm", async (ctx) => {
       `✅ سفارش ثبت شد.\n\n` +
       `🆔 شماره سفارش: #${inserted.rows[0].id}\n` +
       `📊 تعداد: ${Number(data.quantity).toLocaleString("en-US")}\n` +
-      `💵 مبلغ: $${charge.toFixed(2)}\n` +
+      `💵 م��لغ: $${charge.toFixed(2)}\n` +
       `⏳ وضعیت: Pending`,
       mainMenu()
     );
