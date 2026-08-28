@@ -1,67 +1,231 @@
 import { Markup } from "telegraf";
 
+export const CUSTOM_EMOJI = {
+  platforms: {
+    instagram: "5319160079465857105",
+    facebook: "5474348994605891991",
+    tiktok: "5327982530702359565",
+    youtube: "5334681713316479679",
+    telegram: "5330237710655306682",
+    twitter: "5330337435500951363",
+    whatsapp: "5334998226636390258",
+    kik: "5289683581474464897",
+    threads: "5334592721594105691",
+    linkedin: "5346024520081751155",
+    googleMaps: "5370988368949690738",
+    likee: "5321403907820240828",
+    snapchat: "5330248916224983855"
+  },
+  menu: {
+    newOrder: "5269749315403802774",
+    balance: "5814447916969890525",
+    orders: "6269366244462301331",
+    prices: "5388590673937053524",
+    deposit: "5814556334829343625",
+    support: "5431376038628171216"
+  },
+  categories: {
+    followers: "5165730662103122933",
+    likes: "5269254968963001187",
+    comments: "5389035628253950810",
+    views: "5386638267703635704",
+    live: "6280793816702126346"
+  },
+  back: "5983279327574233274"
+};
+
+export function customEmojiCallback(text, callbackData, customEmojiId = null) {
+  const button = Markup.button.callback(text, callbackData);
+  if (customEmojiId) {
+    button.icon_custom_emoji_id = String(customEmojiId);
+  }
+  return button;
+}
+
+function normalizeName(value) {
+  return String(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+export function platformEmojiId(platform) {
+  const name = normalizeName(platform?.name);
+
+  if (name === "instagram") return CUSTOM_EMOJI.platforms.instagram;
+  if (name === "facebook") return CUSTOM_EMOJI.platforms.facebook;
+  if (name === "tiktok") return CUSTOM_EMOJI.platforms.tiktok;
+  if (name === "youtube") return CUSTOM_EMOJI.platforms.youtube;
+  if (name === "telegram") return CUSTOM_EMOJI.platforms.telegram;
+  if (["twitter / x", "twitter", "x"].includes(name)) return CUSTOM_EMOJI.platforms.twitter;
+  if (name === "whatsapp") return CUSTOM_EMOJI.platforms.whatsapp;
+  if (["kik", "kick", "kiki"].includes(name)) return CUSTOM_EMOJI.platforms.kik;
+  if (name === "threads") return CUSTOM_EMOJI.platforms.threads;
+  if (["linkedin", "linkdin"].includes(name)) return CUSTOM_EMOJI.platforms.linkedin;
+  if (["google maps", "google map"].includes(name)) return CUSTOM_EMOJI.platforms.googleMaps;
+  if (name === "likee") return CUSTOM_EMOJI.platforms.likee;
+  if (name === "snapchat") return CUSTOM_EMOJI.platforms.snapchat;
+
+  return null;
+}
+
+export function categoryEmojiId(categoryOrLabel) {
+  const name = normalizeName(
+    typeof categoryOrLabel === "string" ? categoryOrLabel : categoryOrLabel?.name
+  );
+
+  if (
+    name.includes("فالوور") ||
+    name.includes("ممبر") ||
+    name.includes("subscriber") ||
+    name.includes("سابسکرایبر") ||
+    name.includes("member")
+  ) {
+    return CUSTOM_EMOJI.categories.followers;
+  }
+
+  if (
+    name.includes("لایک") ||
+    name === "like" ||
+    name.includes("ری‌اکشن") ||
+    name.includes("reaction")
+  ) {
+    return CUSTOM_EMOJI.categories.likes;
+  }
+
+  if (name.includes("کامنت") || name.includes("comment")) {
+    return CUSTOM_EMOJI.categories.comments;
+  }
+
+  if (
+    name.includes("ویو") ||
+    name.includes("view")
+  ) {
+    return CUSTOM_EMOJI.categories.views;
+  }
+
+  if (
+    name.includes("live stream") ||
+    name.includes("لایو") ||
+    name.includes("live")
+  ) {
+    return CUSTOM_EMOJI.categories.live;
+  }
+
+  return null;
+}
+
 export const mainMenu = () =>
   Markup.inlineKeyboard([
-    [Markup.button.callback("🛒 ایجاد سفارش جدید", "menu:new_order")],
-    [Markup.button.callback("💰 قیمت بسته‌ها", "menu:prices")],
     [
-      Markup.button.callback("📦 سفارش‌های من", "menu:orders"),
-      Markup.button.callback("💵 موجودی من", "menu:balance")
+      customEmojiCallback(
+        "ایجاد سفارش جدید",
+        "menu:new_order",
+        CUSTOM_EMOJI.menu.newOrder
+      )
     ],
     [
-      Markup.button.callback("💳 افزایش موجودی", "menu:deposit"),
-      Markup.button.callback("🎧 پشتیبانی", "menu:support")
+      customEmojiCallback(
+        "قیمت بسته‌ها",
+        "menu:prices",
+        CUSTOM_EMOJI.menu.prices
+      )
+    ],
+    [
+      customEmojiCallback(
+        "سفارش‌های من",
+        "menu:orders",
+        CUSTOM_EMOJI.menu.orders
+      ),
+      customEmojiCallback(
+        "موجودی من",
+        "menu:balance",
+        CUSTOM_EMOJI.menu.balance
+      )
+    ],
+    [
+      customEmojiCallback(
+        "افزایش موجودی",
+        "menu:deposit",
+        CUSTOM_EMOJI.menu.deposit
+      ),
+      customEmojiCallback(
+        "پشتیبانی",
+        "menu:support",
+        CUSTOM_EMOJI.menu.support
+      )
     ]
   ]);
 
 export function platformKeyboard(platforms, mode) {
-  const buttons = platforms.map((p) =>
-    Markup.button.callback(`${p.emoji} ${p.name}`, `${mode}:platform:${p.id}`)
+  const buttons = platforms.map((platform) =>
+    customEmojiCallback(
+      platform.name,
+      `${mode}:platform:${platform.id}`,
+      platformEmojiId(platform)
+    )
   );
 
   const rows = [];
   for (let i = 0; i < buttons.length; i += 2) {
     rows.push(buttons.slice(i, i + 2));
   }
-  rows.push([Markup.button.callback("⬅️ برگشت", "menu:home")]);
+
+  rows.push([
+    customEmojiCallback("برگشت", "menu:home", CUSTOM_EMOJI.back)
+  ]);
 
   return Markup.inlineKeyboard(rows);
 }
 
 export function categoryKeyboard(categories, mode, platformId) {
-  const rows = categories.map((c) => [
-    Markup.button.callback(
-      `${c.emoji} ${c.name}`,
-      `${mode}:category:${platformId}:${c.id}`
-    )
+  const rows = categories.map((category) => {
+    const iconId = categoryEmojiId(category);
+    const text = iconId ? category.name : `${category.emoji} ${category.name}`;
+
+    return [
+      customEmojiCallback(
+        text,
+        `${mode}:category:${platformId}:${category.id}`,
+        iconId
+      )
+    ];
+  });
+
+  rows.push([
+    customEmojiCallback("برگشت", `${mode}:platforms`, CUSTOM_EMOJI.back)
   ]);
-  rows.push([Markup.button.callback("⬅️ برگشت", `${mode}:platforms`)]);
+
   return Markup.inlineKeyboard(rows);
 }
 
 export function serviceKeyboard(services, mode, platformId, categoryId) {
-  const rows = services.map((s) => [
+  const rows = services.map((service) => [
     Markup.button.callback(
-      s.button_name,
-      `${mode}:service:${platformId}:${categoryId}:${s.id}`
+      service.button_name,
+      `${mode}:service:${platformId}:${categoryId}:${service.id}`
     )
   ]);
+
   rows.push([
-    Markup.button.callback(
-      "⬅️ برگشت",
-      `${mode}:back_categories:${platformId}`
+    customEmojiCallback(
+      "برگشت",
+      `${mode}:back_categories:${platformId}`,
+      CUSTOM_EMOJI.back
     )
   ]);
+
   return Markup.inlineKeyboard(rows);
 }
 
 export function packageKeyboard(packages, mode, serviceId) {
-  const rows = packages.map((p) => [
+  const rows = packages.map((pkg) => [
     Markup.button.callback(
-      `${Number(p.quantity).toLocaleString("en-US")} — $${Number(p.price).toFixed(2)}`,
-      `${mode}:package:${serviceId}:${p.id}`
+      `${Number(pkg.quantity).toLocaleString("en-US")} — $${Number(pkg.price).toFixed(2)}`,
+      `${mode}:package:${serviceId}:${pkg.id}`
     )
   ]);
-  rows.push([Markup.button.callback("⬅️ برگشت", "menu:home")]);
+
+  rows.push([
+    customEmojiCallback("برگشت", "menu:home", CUSTOM_EMOJI.back)
+  ]);
+
   return Markup.inlineKeyboard(rows);
 }
