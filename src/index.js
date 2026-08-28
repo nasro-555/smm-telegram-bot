@@ -27,6 +27,13 @@ import {
   createOrder as createProviderOrder,
   getProviderName
 } from "./providers/registry.js";
+import {
+  createHeleketInvoice,
+  publicBaseUrl
+} from "./payments/heleket/client.js";
+import {
+  startHeleketServer
+} from "./payments/heleket/server.js";
 
 if (!process.env.BOT_TOKEN) {
   throw new Error("BOT_TOKEN is missing");
@@ -746,6 +753,120 @@ bot.on("text", async (ctx) => {
 
   const text = ctx.message.text.trim();
 
+  if (session.state === "deposit_heleket_amount") {
+    const amount = Number(
+      text.replace(",", ".")
+    );
+
+    if (
+      !Number.isFinite(amount) ||
+      amount < 1 ||
+      amount > 10000
+    ) {
+      return ctx.reply(
+        "❌ مبلغ باید یک عدد بین 1 تا 10,000 دلار باشد."
+      );
+    }
+
+    const orderId =
+      `dep_${ctx.from.id}_${Date.now()}`;
+
+    try {
+      await query(
+        `INSERT INTO deposits (
+           telegram_id,
+           provider,
+           external_order_id,
+           amount_usd,
+           status
+         )
+         VALUES ($1,'heleket',$2,$3,'creating')`,
+        [
+          ctx.from.id,
+          orderId,
+          amount
+        ]
+      );
+
+      const invoice =
+        await createHeleketInvoice({
+          amount,
+          orderId,
+          telegramId: ctx.from.id
+        });
+
+      await query(
+        `UPDATE deposits
+         SET invoice_uuid = $1,
+             status = $2,
+             provider_payload = $3::jsonb,
+             updated_at = NOW()
+         WHERE external_order_id = $4`,
+        [
+          String(invoice.uuid ?? ""),
+          String(
+            invoice.status ??
+            invoice.payment_status ??
+            "check"
+          ),
+          JSON.stringify(invoice),
+          orderId
+        ]
+      );
+
+      await clearSession(
+        ctx.from.id
+      );
+
+      return ctx.reply(
+        `✅ فاکتور Heleket ساخته شد.\n\n` +
+        `💵 مبلغ: $${amount.toFixed(2)}\n` +
+        "پس از تأیید پرداخت، موجودی شما خودکار افزایش می‌یابد.",
+        Markup.inlineKeyboard([
+          [
+            Markup.button.url(
+              "💳 پرداخت با Heleket",
+              invoice.url
+            )
+          ],
+          [
+            customEmojiCallback(
+              "برگشت",
+              "menu:home",
+              CUSTOM_EMOJI.back
+            )
+          ]
+        ])
+      );
+    } catch (error) {
+      console.error(
+        "Heleket invoice create error:",
+        error
+      );
+
+      await query(
+        `UPDATE deposits
+         SET status = 'failed',
+             provider_payload = $1::jsonb,
+             updated_at = NOW()
+         WHERE external_order_id = $2`,
+        [
+          JSON.stringify({
+            error: String(
+              error.message || error
+            )
+          }),
+          orderId
+        ]
+      ).catch(() => {});
+
+      return ctx.reply(
+        "❌ ساخت فاکتور Heleket ممکن نشد. کمی بعد دوباره امتحان کنید.",
+        mainMenu()
+      );
+    }
+  }
+
   if (session.state === "provider_quantity") {
     const quantity = Number(text);
     const min = Number(session.data.min);
@@ -1142,11 +1263,68 @@ bot.action("menu:deposit", async (ctx) => {
 
   const text =
     `${htmlMenuTitle("deposit", "افزایش موجودی")}\n\n` +
-    "روش پرداخت را در مرحله بعد اضافه می‌کنیم.";
+    "روش پرداخت را انتخاب کنید:";
 
   await ctx.editMessageText(
     text,
-    htmlText(text, mainMenu())
+    htmlText(
+      text,
+      Markup.inlineKeyboard([
+        [
+          customEmojiCallback(
+            "Heleket",
+            "deposit:heleket",
+            CUSTOM_EMOJI.menu.deposit
+          )
+        ],
+        [
+          customEmojiCallback(
+            "برگشت",
+            "menu:home",
+            CUSTOM_EMOJI.back
+          )
+        ]
+      ])
+    )
+  );
+});
+
+bot.action("deposit:heleket", async (ctx) => {
+  await answerCb(ctx);
+
+  if (!publicBaseUrl()) {
+    return ctx.editMessageText(
+      "❌ دامنه عمومی Railway هنوز ساخته نشده است.\n\n" +
+      "بعد از نصب این نسخه، در Railway برای پورت 8080 دامنه بسازید.",
+      mainMenu()
+    );
+  }
+
+  await setSession(
+    ctx.from.id,
+    "deposit_heleket_amount",
+    {}
+  );
+
+  const text =
+    `${htmlMenuTitle("deposit", "افزایش موجودی با Heleket")}\n\n` +
+    "مبلغ را به دلار وارد کنید.\n" +
+    "مثال: 10";
+
+  await ctx.editMessageText(
+    text,
+    htmlText(
+      text,
+      Markup.inlineKeyboard([
+        [
+          customEmojiCallback(
+            "برگشت",
+            "menu:home",
+            CUSTOM_EMOJI.back
+          )
+        ]
+      ])
+    )
   );
 });
 
@@ -1175,6 +1353,8 @@ await initDatabase();
 console.log("Database initialized.");
 console.log("Providers loaded.");
 console.log("Starting Telegram bot...");
+
+startHeleketServer(bot);
 
 await bot.launch({
   dropPendingUpdates: false
