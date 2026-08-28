@@ -146,7 +146,8 @@ async function seedPlatformsAndCategories() {
       ["فالوور / عضو", "👥", "followers", 1],
       ["لایک", "❤️", "likes", 2],
       ["ویو", "👁", "views", 3],
-      ["کامنت", "💬", "comments", 4]
+      ["کامنت", "💬", "comments", 4],
+      ["بغیه خدمات", "🔹", "other-services", 5]
     ];
 
     if (platform.slug === "tiktok") {
@@ -155,21 +156,23 @@ async function seedPlatformsAndCategories() {
         ["لایک", "❤️", "likes", 2],
         ["ویو", "👁", "views", 3],
         ["کامنت", "💬", "comments", 4],
-        ["Live Stream", "🔴", "live-stream", 5]
+        ["Live Stream", "🔴", "live-stream", 5],
+        ["بغیه خدمات", "🔹", "other-services", 6]
       ];
     } else if (platform.slug === "youtube") {
       categories = [
         ["Subscriber / ممبر", "👥", "followers", 1],
         ["Like", "❤️", "likes", 2],
         ["ویو", "👁", "views", 3],
-        ["کامنت", "💬", "comments", 4]
+        ["کامنت", "💬", "comments", 4],
+        ["بغیه خدمات", "🔹", "other-services", 5]
       ];
     } else if (platform.slug === "twitter") {
       categories = [
         ["فالوور", "👥", "followers", 1],
         ["لایک", "❤️", "likes", 2],
         ["ویو", "👁", "views", 3],
-        ["بقیه خدمات توییتر", "🔹", "other-services", 4]
+        ["بغیه خدمات", "🔹", "other-services", 4]
       ];
     } else if (platform.slug === "telegram") {
       categories = [
@@ -179,11 +182,13 @@ async function seedPlatformsAndCategories() {
         ["ری‌اکشن خودکار", "❤️", "auto-reactions", 4],
         ["ری‌اکشن استوری", "❤️", "story-reactions", 5],
         ["ویو", "👁", "views", 6],
-        ["ویو خودکار", "👁", "auto-views", 7]
+        ["ویو خودکار", "👁", "auto-views", 7],
+        ["بغیه خدمات", "🔹", "other-services", 8]
       ];
     } else if (platform.slug === "google-maps") {
       categories = [
-        ["خدمات Google Maps", "📍", "maps-services", 1]
+        ["خدمات Google Maps", "📍", "maps-services", 1],
+        ["بغیه خدمات", "🔹", "other-services", 2]
       ];
     }
 
@@ -235,7 +240,8 @@ async function seedPlatformsAndCategories() {
              'auto-reactions',
              'story-reactions',
              'views',
-             'auto-views'
+             'auto-views',
+             'other-services'
            )`,
         [platform.id]
       );

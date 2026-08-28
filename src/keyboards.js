@@ -29,7 +29,8 @@ export const CUSTOM_EMOJI = {
     likes: "5269254968963001187",
     comments: "5389035628253950810",
     views: "5386638267703635704",
-    live: "6280793816702126346"
+    live: "6280793816702126346",
+    other: "5447410659077661506"
   },
   info: {
     platformTitle: "5398012024003246287",
@@ -108,6 +109,15 @@ export function categoryEmojiId(categoryOrLabel) {
 
   if (name.includes("live stream") || name.includes("لایو") || name.includes("live")) {
     return CUSTOM_EMOJI.categories.live;
+  }
+
+  if (
+    name.includes("بغیه خدمات") ||
+    name.includes("بقیه خدمات") ||
+    name.includes("other services") ||
+    name.includes("other-services")
+  ) {
+    return CUSTOM_EMOJI.categories.other;
   }
 
   return null;
