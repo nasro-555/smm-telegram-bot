@@ -3,6 +3,7 @@ import { FACEBOOK_PANELS } from "./facebook.js";
 import { TIKTOK_PANELS } from "./tiktok.js";
 import { YOUTUBE_PANELS } from "./youtube.js";
 import { TELEGRAM_PANELS } from "./telegram.js";
+import { TWITTER_PANELS } from "./twitter.js";
 import {
   getAllServices,
   createSmmxOrder,
@@ -18,7 +19,8 @@ const PANEL_LIST = [
   ...FACEBOOK_PANELS,
   ...TIKTOK_PANELS,
   ...YOUTUBE_PANELS,
-  ...TELEGRAM_PANELS
+  ...TELEGRAM_PANELS,
+  ...TWITTER_PANELS
 ];
 
 const PANELS = new Map(
