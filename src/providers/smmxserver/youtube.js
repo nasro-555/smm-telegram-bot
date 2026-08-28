@@ -26,24 +26,24 @@ export const YOUTUBE_PANELS = [
     ]
   },
   {
-    code: "ytv5",
-    platformSlug: "youtube",
-    categorySlug: "views",
-    label: "ویو 5 دقیقه",
-    emoji: "👀",
-    panelName: "ویو 5 دقیقه",
-    pricing: { mode: "multiply", value: 2 },
-    ids: [
-      12059, 12060, 12061, 12062
-    ]
-  },
-  {
     code: "ytvu5",
     platformSlug: "youtube",
     categorySlug: "views",
     label: "ویو زیر 5 دقیقه",
     emoji: "👀",
     panelName: "ویو زیر 5 دقیقه",
+    pricing: { mode: "multiply", value: 2 },
+    ids: [
+      12059, 12060, 12061, 12062
+    ]
+  },
+  {
+    code: "ytv5p",
+    platformSlug: "youtube",
+    categorySlug: "views",
+    label: "ویو بالای 5 دقیقه",
+    emoji: "👀",
+    panelName: "ویو بالای 5 دقیقه",
     pricing: { mode: "multiply", value: 2 },
     ids: [
       3351, 3352, 3353, 3354, 3355,
