@@ -577,7 +577,8 @@ async function providerPanel(
   panelCode,
   mode,
   platformId,
-  categoryId
+  categoryId,
+  page = 0
 ) {
   try {
     const panel = getPanel(
@@ -597,7 +598,7 @@ async function providerPanel(
 
     if (!services.length) {
       return ctx.editMessageText(
-        `❌ فعلاً هیچ سرویس ${panel.label} از این پنل در دسترس نیست.`,
+        "❌ فعلاً هیچ سرویسی از این پنل در دسترس نیست.",
         Markup.inlineKeyboard([
           [
             customEmojiCallback(
@@ -610,12 +611,60 @@ async function providerPanel(
       );
     }
 
-    const rows = services.map((service) => [
-      Markup.button.callback(
-        `${shortName(service.name)} | $${service.sellingRate.toFixed(2)}/1K`,
-        `ps:${providerCode}:${panelCode}:${modeCode(mode)}:${platformId}:${categoryId}:${service.service}`
-      )
-    ]);
+    const PAGE_SIZE = 12;
+    const totalPages = Math.max(
+      1,
+      Math.ceil(services.length / PAGE_SIZE)
+    );
+
+    const safePage = Math.min(
+      Math.max(Number(page) || 0, 0),
+      totalPages - 1
+    );
+
+    const startIndex =
+      safePage * PAGE_SIZE;
+
+    const pageServices =
+      services.slice(
+        startIndex,
+        startIndex + PAGE_SIZE
+      );
+
+    const rows = pageServices.map(
+      (service) => [
+        Markup.button.callback(
+          `${shortName(service.name)} | $${service.sellingRate.toFixed(2)}/1K`,
+          `ps:${providerCode}:${panelCode}:${modeCode(mode)}:${platformId}:${categoryId}:${service.service}:${safePage}`
+        )
+      ]
+    );
+
+    if (totalPages > 1) {
+      const nav = [];
+
+      if (safePage > 0) {
+        nav.push(
+          Markup.button.callback(
+            "⬅️ قبلی",
+            `pvp:${providerCode}:${panelCode}:${modeCode(mode)}:${platformId}:${categoryId}:${safePage - 1}`
+          )
+        );
+      }
+
+      if (safePage < totalPages - 1) {
+        nav.push(
+          Markup.button.callback(
+            "بعدی ➡️",
+            `pvp:${providerCode}:${panelCode}:${modeCode(mode)}:${platformId}:${categoryId}:${safePage + 1}`
+          )
+        );
+      }
+
+      if (nav.length) {
+        rows.push(nav);
+      }
+    }
 
     rows.push([
       customEmojiCallback(
@@ -628,11 +677,19 @@ async function providerPanel(
     const text =
       `${htmlPlatform(info?.platform_name ?? panel.platformSlug)}\n` +
       `${htmlCategory(panel.panelName)}\n\n` +
-      "یکی از سرویس‌ها را انتخاب کنید:";
+      "یکی از سرویس‌ها را انتخاب کنید:" +
+      (
+        totalPages > 1
+          ? `\nصفحه ${safePage + 1} از ${totalPages}`
+          : ""
+      );
 
     await ctx.editMessageText(
       text,
-      htmlText(text, Markup.inlineKeyboard(rows))
+      htmlText(
+        text,
+        Markup.inlineKeyboard(rows)
+      )
     );
   } catch (error) {
     console.error(
@@ -654,7 +711,8 @@ async function providerService(
   mode,
   platformId,
   categoryId,
-  serviceId
+  serviceId,
+  sourcePage = 0
 ) {
   try {
     const service = await getService(
@@ -705,7 +763,7 @@ async function providerService(
           [
             customEmojiCallback(
               "برگشت",
-              `pv:${providerCode}:${panelCode}:${modeCode(mode)}:${platformId}:${categoryId}`,
+              `pvp:${providerCode}:${panelCode}:${modeCode(mode)}:${platformId}:${categoryId}:${sourcePage}`,
               CUSTOM_EMOJI.back
             )
           ]
@@ -830,13 +888,32 @@ bot.action(
       ctx.match[2],
       modeName(ctx.match[3]),
       Number(ctx.match[4]),
-      Number(ctx.match[5])
+      Number(ctx.match[5]),
+      0
     );
   }
 );
 
 bot.action(
-  /^ps:([a-z0-9]+):([a-z0-9]+):([op]):(\d+):(\d+):(\d+)$/,
+  /^pvp:([a-z0-9]+):([a-z0-9]+):([op]):(\d+):(\d+):(\d+)$/,
+  async (ctx) => {
+    await answerCb(ctx);
+
+    await providerPanel(
+      ctx,
+      ctx.match[1],
+      ctx.match[2],
+      modeName(ctx.match[3]),
+      Number(ctx.match[4]),
+      Number(ctx.match[5]),
+      Number(ctx.match[6])
+    );
+  }
+);
+
+
+bot.action(
+  /^ps:([a-z0-9]+):([a-z0-9]+):([op]):(\d+):(\d+):(\d+):(\d+)$/,
   async (ctx) => {
     await answerCb(ctx);
 
@@ -847,7 +924,8 @@ bot.action(
       modeName(ctx.match[3]),
       Number(ctx.match[4]),
       Number(ctx.match[5]),
-      Number(ctx.match[6])
+      Number(ctx.match[6]),
+      Number(ctx.match[7])
     );
   }
 );
