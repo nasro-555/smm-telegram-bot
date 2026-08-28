@@ -304,6 +304,31 @@ function htmlText(text, keyboard) {
   };
 }
 
+function htmlErrorMessage(message) {
+  const clean = String(message ?? "")
+    .replace(/^❌\s*/, "");
+
+  return `${tgEmoji(ERROR_CUSTOM_EMOJI_ID, "❌")} ${escapeHtml(clean)}`;
+}
+
+async function replyError(ctx, message, keyboard = null) {
+  const text = htmlErrorMessage(message);
+
+  return ctx.reply(
+    text,
+    htmlText(text, keyboard ?? undefined)
+  );
+}
+
+async function editError(ctx, message, keyboard = null) {
+  const text = htmlErrorMessage(message);
+
+  return ctx.editMessageText(
+    text,
+    htmlText(text, keyboard ?? undefined)
+  );
+}
+
 async function answerCb(ctx, text) {
   try {
     if (ctx.callbackQuery) {
@@ -320,7 +345,13 @@ function orderControlKeyboard(order) {
     rows.push([Markup.button.callback("♻️ جبران ریزش", `order:refill:${order.id}`)]);
   }
   if (order.cancel_supported && !order.cancel_closed && !order.cancel_requested_at) {
-    rows.push([Markup.button.callback("❌ ثبت کنسل", `order:cancel_api:${order.id}`)]);
+    rows.push([
+      customEmojiCallback(
+        "ثبت کنسل",
+        `order:cancel_api:${order.id}`,
+        ERROR_CUSTOM_EMOJI_ID
+      )
+    ]);
   }
   rows.push(...mainMenu().reply_markup.inline_keyboard);
   return Markup.inlineKeyboard(rows);
@@ -899,8 +930,9 @@ bot.action(
         error
       );
 
-      await ctx.editMessageText(
-        "❌ شروع سفارش ممکن نشد.",
+      await editError(
+        ctx,
+        "شروع سفارش ممکن نشد.",
         mainMenu()
       );
     }
@@ -910,8 +942,9 @@ bot.action(
 bot.command("cancel", async (ctx) => {
   await clearSession(ctx.from.id);
 
-  await ctx.reply(
-    "❌ سفارش لغو شد.",
+  await replyError(
+    ctx,
+    "سفارش لغو شد.",
     mainMenu()
   );
 });
@@ -1274,20 +1307,23 @@ bot.on("text", async (ctx) => {
     const max = Number(session.data.max);
 
     if (!Number.isInteger(quantity)) {
-      return ctx.reply(
-        "❌ تعداد باید یک عدد صحیح باشد."
+      return replyError(
+        ctx,
+        "تعداد باید یک عدد صحیح باشد."
       );
     }
 
     if (quantity < min) {
-      return ctx.reply(
-        `❌ حداقل سفارش این سرویس ${min.toLocaleString("en-US")} عدد است.`
+      return replyError(
+        ctx,
+        `حداقل سفارش این سرویس ${min.toLocaleString("en-US")} عدد است.`
       );
     }
 
     if (quantity > max) {
-      return ctx.reply(
-        `❌ حداکثر سفارش این سرویس ${max.toLocaleString("en-US")} عدد است.`
+      return replyError(
+        ctx,
+        `حداکثر سفارش این سرویس ${max.toLocaleString("en-US")} عدد است.`
       );
     }
 
@@ -1320,8 +1356,9 @@ bot.on("text", async (ctx) => {
 
   if (session.state === "provider_link") {
     if (text.length < 5) {
-      return ctx.reply(
-        "❌ لینک معتبر نیست. دوباره ارسال کنید."
+      return replyError(
+        ctx,
+        "لینک معتبر نیست. دوباره ارسال کنید."
       );
     }
 
@@ -1338,7 +1375,7 @@ bot.on("text", async (ctx) => {
 
     const confirmText =
       `${htmlOrderSummaryTitle()}\n\n` +
-      `${tgEmoji(ORDER_RESULT_EMOJI.serviceBullet, tgEmoji(ORDER_RESULT_EMOJI.serviceBullet, "🔹"))} سرویس: ${htmlServiceName(data.service_name)}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.serviceBullet, "🔹")} سرویس: ${htmlServiceName(data.service_name)}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${Number(data.quantity).toLocaleString("en-US")}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} قیمت نهایی: $${Number(data.charge).toFixed(2)}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.link, "🔗")} لینک: ${escapeHtml(data.link)}\n\n` +
@@ -1353,9 +1390,10 @@ bot.on("text", async (ctx) => {
             confirmOrderButton()
           ],
           [
-            Markup.button.callback(
-              "❌ لغو",
-              "order:cancel"
+            customEmojiCallback(
+              "لغو",
+              "order:cancel",
+              ERROR_CUSTOM_EMOJI_ID
             )
           ]
         ])
@@ -1365,8 +1403,9 @@ bot.on("text", async (ctx) => {
 
   if (session.state === "provider_custom_link") {
     if (text.length < 5) {
-      return ctx.reply(
-        "❌ لینک معتبر نیست. دوباره ارسال کنید."
+      return replyError(
+        ctx,
+        "لینک معتبر نیست. دوباره ارسال کنید."
       );
     }
 
@@ -1429,7 +1468,7 @@ bot.on("text", async (ctx) => {
 
     const confirmText =
       `${htmlOrderSummaryTitle()}\n\n` +
-      `${tgEmoji(ORDER_RESULT_EMOJI.serviceBullet, tgEmoji(ORDER_RESULT_EMOJI.serviceBullet, "🔹"))} سرویس: ${htmlServiceName(data.service_name)}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.serviceBullet, "🔹")} سرویس: ${htmlServiceName(data.service_name)}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد کامنت: ${quantity.toLocaleString("en-US")}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} قیمت نهایی: $${charge.toFixed(2)}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.link, "🔗")} لینک: ${escapeHtml(data.link)}\n\n` +
@@ -1444,9 +1483,10 @@ bot.on("text", async (ctx) => {
             confirmOrderButton()
           ],
           [
-            Markup.button.callback(
-              "❌ لغو",
-              "order:cancel"
+            customEmojiCallback(
+              "لغو",
+              "order:cancel",
+              ERROR_CUSTOM_EMOJI_ID
             )
           ]
         ])
@@ -1459,8 +1499,9 @@ bot.action("order:cancel", async (ctx) => {
   await answerCb(ctx);
   await clearSession(ctx.from.id);
 
-  await ctx.editMessageText(
-    "❌ سفارش لغو شد.",
+  await editError(
+    ctx,
+    "سفارش لغو شد.",
     mainMenu()
   );
 });
@@ -1506,7 +1547,7 @@ bot.action("provider:confirm", async (ctx) => {
       await client.query("ROLLBACK");
 
       const insufficientText =
-        `❌ موجودی کافی نیست.\n\n` +
+        `${tgEmoji(ERROR_CUSTOM_EMOJI_ID, "❌")} موجودی کافی نیست.\n\n` +
         `💵 موجودی شما: $${balance.toFixed(2)}\n` +
         `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} مبلغ سفارش: $${charge.toFixed(2)}`;
 
@@ -1609,8 +1650,9 @@ bot.action("provider:confirm", async (ctx) => {
       error
     );
 
-    await ctx.reply(
-      "❌ ثبت سفارش در پنل انجام نشد. مبلغی از موجودی شما کم نشد.",
+    await replyError(
+      ctx,
+      "ثبت سفارش در پنل انجام نشد. مبلغی از موجودی شما کم نشد.",
       mainMenu()
     );
   } finally {
@@ -1646,8 +1688,10 @@ bot.action(/^order:refill:(\d+)$/, async (ctx) => {
     } catch {}
   } catch (error) {
     console.error("Refill request error:", error);
-    await ctx.reply(`❌ ثبت جبران ریزش انجام نشد.
-${String(error.message || "Provider rejected the request")}`);
+    await replyError(
+      ctx,
+      `ثبت جبران ریزش انجام نشد.\n${String(error.message || "Provider rejected the request")}`
+    );
   }
 });
 
@@ -1762,7 +1806,13 @@ bot.action("menu:orders", async (ctx) => {
       buttons.push(Markup.button.callback(`♻️ جبران #${order.id}`, `order:refill:${order.id}`));
     }
     if (order.cancel_supported && !order.cancel_closed && !order.cancel_requested_at) {
-      buttons.push(Markup.button.callback(`❌ کنسل #${order.id}`, `order:cancel_api:${order.id}`));
+      buttons.push(
+        customEmojiCallback(
+          `کنسل #${order.id}`,
+          `order:cancel_api:${order.id}`,
+          ERROR_CUSTOM_EMOJI_ID
+        )
+      );
     }
     if (buttons.length) controlRows.push(buttons);
   }
