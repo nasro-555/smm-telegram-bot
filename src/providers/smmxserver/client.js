@@ -119,3 +119,27 @@ export async function getSmmxOrderStatus(orderId) {
 export async function getSmmxBalance() {
   return post({ action: "balance" });
 }
+
+export async function requestSmmxRefill(orderId) {
+  const data = await post({ action: "refill", order: orderId });
+  if (!data || data.refill == null) {
+    throw new Error(data?.error ? String(data.error) : "Provider did not return a refill ID");
+  }
+  return data;
+}
+
+export async function getSmmxRefillStatus(refillId) {
+  return post({ action: "refill_status", refill: refillId });
+}
+
+export async function requestSmmxCancel(orderId) {
+  const data = await post({ action: "cancel", orders: String(orderId) });
+  const result = Array.isArray(data) ? (data.find((item) => String(item?.order) === String(orderId)) ?? data[0]) : data;
+  if (!result) throw new Error("Provider returned an empty cancel response");
+  if (result.error) throw new Error(String(result.error));
+  const cancelValue = result.cancel;
+  if (cancelValue === false || cancelValue === 0 || cancelValue === "0") {
+    throw new Error("Cancel is no longer available for this order");
+  }
+  return result;
+}

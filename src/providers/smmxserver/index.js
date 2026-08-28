@@ -8,7 +8,10 @@ import {
   getAllServices,
   createSmmxOrder,
   getSmmxOrderStatus,
-  getSmmxBalance
+  getSmmxBalance,
+  requestSmmxRefill,
+  getSmmxRefillStatus,
+  requestSmmxCancel
 } from "./client.js";
 
 export const providerCode = "smmx";
@@ -165,3 +168,7 @@ export async function getOrderStatus(orderId) {
 export async function getBalance() {
   return getSmmxBalance();
 }
+
+export async function requestRefill(orderId) { return requestSmmxRefill(orderId); }
+export async function getRefillStatus(refillId) { return getSmmxRefillStatus(refillId); }
+export async function requestCancel(orderId) { return requestSmmxCancel(orderId); }
