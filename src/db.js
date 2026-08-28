@@ -80,6 +80,23 @@ export async function initDatabase() {
   await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS selling_rate NUMERIC(14,4);`);
 
   await query(`
+    CREATE TABLE IF NOT EXISTS deposits (
+      id BIGSERIAL PRIMARY KEY,
+      telegram_id BIGINT NOT NULL REFERENCES users(telegram_id),
+      provider TEXT NOT NULL DEFAULT 'heleket',
+      external_order_id TEXT NOT NULL UNIQUE,
+      invoice_uuid TEXT,
+      amount_usd NUMERIC(14,4) NOT NULL,
+      status TEXT NOT NULL DEFAULT 'created',
+      credited BOOLEAN NOT NULL DEFAULT FALSE,
+      credited_at TIMESTAMPTZ,
+      provider_payload JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS user_sessions (
       telegram_id BIGINT PRIMARY KEY REFERENCES users(telegram_id) ON DELETE CASCADE,
       state TEXT,
