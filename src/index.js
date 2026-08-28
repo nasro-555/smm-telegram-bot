@@ -25,7 +25,9 @@ import {
   getService,
   calculateCharge,
   createOrder as createProviderOrder,
-  getProviderName
+  getProviderName,
+  requestRefill as requestProviderRefill,
+  requestCancel as requestProviderCancel
 } from "./providers/registry.js";
 import {
   createHeleketInvoice,
@@ -201,6 +203,29 @@ async function answerCb(ctx, text) {
       await ctx.answerCbQuery(text);
     }
   } catch {}
+}
+
+const REFILL_WAIT_MS = 48 * 60 * 60 * 1000;
+
+function orderControlKeyboard(order) {
+  const rows = [];
+  if (order.refill_supported && !order.refill_id) {
+    rows.push([Markup.button.callback("♻️ جبران ریزش", `order:refill:${order.id}`)]);
+  }
+  if (order.cancel_supported && !order.cancel_closed && !order.cancel_requested_at) {
+    rows.push([Markup.button.callback("❌ ثبت کنسل", `order:cancel_api:${order.id}`)]);
+  }
+  rows.push(...mainMenu().reply_markup.inline_keyboard);
+  return Markup.inlineKeyboard(rows);
+}
+
+async function loadUserOrder(telegramId, orderId) {
+  const result = await query(
+    `SELECT id, telegram_id, provider_name, provider_order_id, created_at, refill_supported, cancel_supported, cancel_closed, cancel_requested_at, refill_id, refill_requested_at
+     FROM orders WHERE id = $1 AND telegram_id = $2`,
+    [orderId, telegramId]
+  );
+  return result.rows[0] ?? null;
 }
 
 async function home(ctx) {
@@ -711,7 +736,9 @@ bot.action(
         selling_rate: service.sellingRate,
         min: service.min,
         max: service.max,
-        custom_comments: service.customComments
+        custom_comments: service.customComments,
+        refill_supported: Boolean(service.refill),
+        cancel_supported: Boolean(service.cancel)
       };
 
       if (service.customComments) {
@@ -1181,11 +1208,13 @@ bot.action("provider:confirm", async (ctx) => {
            provider_service_id,
            service_name,
            provider_rate,
-           selling_rate
+           selling_rate,
+           refill_supported,
+           cancel_supported
          )
          VALUES (
            $1,$2,$3,$4,$5,$6,'pending',$7,
-           $8,$9,$10,$11,$12
+           $8,$9,$10,$11,$12,$13,$14
          )
          RETURNING id`,
         [
@@ -1200,7 +1229,9 @@ bot.action("provider:confirm", async (ctx) => {
           data.provider_service_id,
           data.service_name,
           data.provider_rate,
-          data.selling_rate
+          data.selling_rate,
+          Boolean(data.refill_supported),
+          Boolean(data.cancel_supported)
         ]
       );
 
@@ -1214,9 +1245,18 @@ bot.action("provider:confirm", async (ctx) => {
       `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} مبلغ: $${charge.toFixed(2)}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.status, "⏳")} وضعیت: Pending`;
 
+    const orderControl = {
+      id: inserted.rows[0].id,
+      refill_supported: Boolean(data.refill_supported),
+      cancel_supported: Boolean(data.cancel_supported),
+      cancel_closed: false,
+      cancel_requested_at: null,
+      refill_id: null
+    };
+
     await ctx.editMessageText(
       successText,
-      htmlText(successText, mainMenu())
+      htmlText(successText, orderControlKeyboard(orderControl))
     );
   } catch (error) {
     try {
@@ -1237,7 +1277,7 @@ bot.action("provider:confirm", async (ctx) => {
   }
 });
 
-bot.action("menu:balance", async (ctx) => {
+bot.action(/^order:refill:(\d+)$/, async (ctx) => {\n  const orderId = Number(ctx.match[1]);\n  const order = await loadUserOrder(ctx.from.id, orderId);\n  if (!order) return answerCb(ctx, "سفارش پیدا نشد.");\n  if (!order.refill_supported) return answerCb(ctx, "این سفارش جبران ریزش ندارد.");\n  if (order.refill_id) return answerCb(ctx, "جبران ریزش این سفارش قبلاً ثبت شده است.");\n\n  const elapsed = Date.now() - new Date(order.created_at).getTime();\n  if (elapsed < REFILL_WAIT_MS) {\n    const remainingHours = Math.ceil((REFILL_WAIT_MS - elapsed) / (60 * 60 * 1000));\n    return answerCb(ctx, `برای ثبت جبران ریزش باید حداقل ۴۸ ساعت از ثبت سفارش گذشته باشد. حدود ${remainingHours} ساعت باقی مانده است.`);\n  }\n\n  await answerCb(ctx, "در حال ثبت جبران ریزش...");\n  try {\n    const providerCode = order.provider_name === "smmxserver" ? "smmx" : order.provider_name;\n    const result = await requestProviderRefill(providerCode, order.provider_order_id);\n    await query(\n      `UPDATE orders SET refill_id = $1, refill_requested_at = NOW() WHERE id = $2 AND telegram_id = $3`,\n      [String(result.refill), orderId, ctx.from.id]\n    );\n    await ctx.reply(`✅ درخواست جبران ریزش برای سفارش #${orderId} ثبت شد.`);\n    try {\n      const fresh = await loadUserOrder(ctx.from.id, orderId);\n      await ctx.editMessageReplyMarkup(orderControlKeyboard(fresh).reply_markup);\n    } catch {}\n  } catch (error) {\n    console.error("Refill request error:", error);\n    await ctx.reply(`❌ ثبت جبران ریزش انجام نشد.\n${String(error.message || "Provider rejected the request")}`);\n  }\n});\n\nbot.action(/^order:cancel_api:(\d+)$/, async (ctx) => {\n  const orderId = Number(ctx.match[1]);\n  const order = await loadUserOrder(ctx.from.id, orderId);\n  if (!order) return answerCb(ctx, "سفارش پیدا نشد.");\n  if (!order.cancel_supported || order.cancel_closed) return answerCb(ctx, "امکان کنسل این سفارش دیگر فعال نیست.");\n  if (order.cancel_requested_at) return answerCb(ctx, "درخواست کنسل قبلاً ثبت شده است.");\n\n  await answerCb(ctx, "در حال ارسال درخواست کنسل...");\n  try {\n    const providerCode = order.provider_name === "smmxserver" ? "smmx" : order.provider_name;\n    await requestProviderCancel(providerCode, order.provider_order_id);\n    await query(\n      `UPDATE orders SET cancel_requested_at = NOW(), status = 'cancel_requested' WHERE id = $1 AND telegram_id = $2`,\n      [orderId, ctx.from.id]\n    );\n    await ctx.reply(`✅ درخواست کنسل سفارش #${orderId} برای پنل ارسال شد.`);\n    try {\n      const fresh = await loadUserOrder(ctx.from.id, orderId);\n      await ctx.editMessageReplyMarkup(orderControlKeyboard(fresh).reply_markup);\n    } catch {}\n  } catch (error) {\n    console.error("Cancel request error:", error);\n    await query(\n      `UPDATE orders SET cancel_closed = TRUE WHERE id = $1 AND telegram_id = $2`,\n      [orderId, ctx.from.id]\n    );\n    await ctx.reply("❌ پنل دیگر اجازه کنسل این سفارش را نمی‌دهد.");\n    try {\n      const fresh = await loadUserOrder(ctx.from.id, orderId);\n      await ctx.editMessageReplyMarkup(orderControlKeyboard(fresh).reply_markup);\n    } catch {}\n  }\n});\n\nbot.action("menu:balance", async (ctx) => {
   await answerCb(ctx);
 
   const result = await query(
@@ -1270,7 +1310,13 @@ bot.action("menu:orders", async (ctx) => {
        quantity,
        charge,
        status,
-       service_name
+       service_name,
+       refill_supported,
+       cancel_supported,
+       cancel_closed,
+       cancel_requested_at,
+       refill_id,
+       refill_requested_at
      FROM orders
      WHERE telegram_id = $1
      ORDER BY id DESC
@@ -1301,9 +1347,22 @@ bot.action("menu:orders", async (ctx) => {
   const text =
     `${htmlMenuTitle("orders", "سفارش‌های من")}\n\n${listText}`;
 
+  const controlRows = [];
+  for (const order of result.rows) {
+    const buttons = [];
+    if (order.refill_supported && !order.refill_id) {
+      buttons.push(Markup.button.callback(`♻️ جبران #${order.id}`, `order:refill:${order.id}`));
+    }
+    if (order.cancel_supported && !order.cancel_closed && !order.cancel_requested_at) {
+      buttons.push(Markup.button.callback(`❌ کنسل #${order.id}`, `order:cancel_api:${order.id}`));
+    }
+    if (buttons.length) controlRows.push(buttons);
+  }
+  controlRows.push(...mainMenu().reply_markup.inline_keyboard);
+
   await ctx.editMessageText(
     text,
-    htmlText(text, mainMenu())
+    htmlText(text, Markup.inlineKeyboard(controlRows))
   );
 });
 

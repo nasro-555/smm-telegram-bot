@@ -78,6 +78,12 @@ export async function initDatabase() {
   await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS service_name TEXT;`);
   await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_rate NUMERIC(14,4);`);
   await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS selling_rate NUMERIC(14,4);`);
+  await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS refill_supported BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancel_supported BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancel_closed BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancel_requested_at TIMESTAMPTZ;`);
+  await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS refill_id TEXT;`);
+  await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS refill_requested_at TIMESTAMPTZ;`);
 
   await query(`
     CREATE TABLE IF NOT EXISTS deposits (
