@@ -73,3 +73,13 @@ export async function getOrderStatus(
 export function getProviderName(providerCode) {
   return provider(providerCode).providerName;
 }
+
+export async function requestRefill(providerCode, orderId) {
+  return provider(providerCode).requestRefill(orderId);
+}
+export async function getRefillStatus(providerCode, refillId) {
+  return provider(providerCode).getRefillStatus(refillId);
+}
+export async function requestCancel(providerCode, orderId) {
+  return provider(providerCode).requestCancel(orderId);
+}
