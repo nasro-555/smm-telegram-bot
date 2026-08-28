@@ -72,6 +72,37 @@ function tgEmoji(id, fallback) {
   return `<tg-emoji emoji-id="${String(id)}">${fallback}</tg-emoji>`;
 }
 
+const ORDER_RESULT_EMOJI = {
+  success: "5206607081334906820",
+  orderId: "5965485570124681987",
+  quantity: "5071491301443110142",
+  amount: "5388803751559586023",
+  status: "5927294695158847101"
+};
+
+const SERVICE_TEXT_EMOJI = {
+  rocket: "6228656087709520666",
+  danger: "5210854838350403906"
+};
+
+function htmlServiceName(value) {
+  const safe = escapeHtml(value);
+
+  return safe
+    .replace(
+      /🚀/g,
+      tgEmoji(SERVICE_TEXT_EMOJI.rocket, "🚀")
+    )
+    .replace(
+      /⚠️/g,
+      tgEmoji(SERVICE_TEXT_EMOJI.danger, "⚠️")
+    )
+    .replace(
+      /⚠/g,
+      tgEmoji(SERVICE_TEXT_EMOJI.danger, "⚠️")
+    );
+}
+
 function normalizeName(value) {
   return String(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -126,7 +157,7 @@ function htmlCategory(name) {
   const id = categoryEmojiId(name);
   const fallback = categoryFallback(name);
   const icon = id ? tgEmoji(id, fallback) : fallback;
-  return `${icon} ${escapeHtml(name)}`;
+  return `${icon} ${htmlServiceName(name)}`;
 }
 
 function htmlMenuTitle(key, text) {
@@ -931,27 +962,33 @@ bot.on("text", async (ctx) => {
       data
     );
 
-    return ctx.reply(
+    const confirmText =
       `📦 خلاصه سفارش\n\n` +
-      `🔹 سرویس: ${data.service_name}\n` +
+      `🔹 سرویس: ${htmlServiceName(data.service_name)}\n` +
       `📊 تعداد: ${Number(data.quantity).toLocaleString("en-US")}\n` +
       `💵 قیمت نهایی: $${Number(data.charge).toFixed(2)}\n` +
-      `🔗 لینک: ${data.link}\n\n` +
-      "سفارش را تأیید می‌کنید؟",
-      Markup.inlineKeyboard([
-        [
-          Markup.button.callback(
-            "✅ تأیید سفارش",
-            "provider:confirm"
-          )
-        ],
-        [
-          Markup.button.callback(
-            "❌ لغو",
-            "order:cancel"
-          )
-        ]
-      ])
+      `🔗 لینک: ${escapeHtml(data.link)}\n\n` +
+      "سفارش را تأیید می‌کنید؟";
+
+    return ctx.reply(
+      confirmText,
+      htmlText(
+        confirmText,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback(
+              "✅ تأیید سفارش",
+              "provider:confirm"
+            )
+          ],
+          [
+            Markup.button.callback(
+              "❌ لغو",
+              "order:cancel"
+            )
+          ]
+        ])
+      )
     );
   }
 
@@ -1019,27 +1056,33 @@ bot.on("text", async (ctx) => {
       data
     );
 
-    return ctx.reply(
+    const confirmText =
       `📦 خلاصه سفارش\n\n` +
-      `🔹 سرویس: ${data.service_name}\n` +
+      `🔹 سرویس: ${htmlServiceName(data.service_name)}\n` +
       `💬 تعداد کامنت: ${quantity.toLocaleString("en-US")}\n` +
       `💵 قیمت نهایی: $${charge.toFixed(2)}\n` +
-      `🔗 لینک: ${data.link}\n\n` +
-      "سفارش را تأیید می‌کنید؟",
-      Markup.inlineKeyboard([
-        [
-          Markup.button.callback(
-            "✅ تأیید سفارش",
-            "provider:confirm"
-          )
-        ],
-        [
-          Markup.button.callback(
-            "❌ لغو",
-            "order:cancel"
-          )
-        ]
-      ])
+      `🔗 لینک: ${escapeHtml(data.link)}\n\n` +
+      "سفارش را تأیید می‌کنید؟";
+
+    return ctx.reply(
+      confirmText,
+      htmlText(
+        confirmText,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback(
+              "✅ تأیید سفارش",
+              "provider:confirm"
+            )
+          ],
+          [
+            Markup.button.callback(
+              "❌ لغو",
+              "order:cancel"
+            )
+          ]
+        ])
+      )
     );
   }
 });
@@ -1094,11 +1137,14 @@ bot.action("provider:confirm", async (ctx) => {
     if (balance < charge) {
       await client.query("ROLLBACK");
 
-      return ctx.editMessageText(
+      const insufficientText =
         `❌ موجودی کافی نیست.\n\n` +
         `💵 موجودی شما: $${balance.toFixed(2)}\n` +
-        `💳 مبلغ سفارش: $${charge.toFixed(2)}`,
-        mainMenu()
+        `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} مبلغ سفارش: $${charge.toFixed(2)}`;
+
+      return ctx.editMessageText(
+        insufficientText,
+        htmlText(insufficientText, mainMenu())
       );
     }
 
@@ -1161,13 +1207,16 @@ bot.action("provider:confirm", async (ctx) => {
     await client.query("COMMIT");
     await clearSession(ctx.from.id);
 
+    const successText =
+      `${tgEmoji(ORDER_RESULT_EMOJI.success, "✅")} سفارش ثبت شد.\n\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.orderId, "🆔")} شماره سفارش: #${inserted.rows[0].id}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${Number(data.quantity).toLocaleString("en-US")}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} مبلغ: $${charge.toFixed(2)}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.status, "⏳")} وضعیت: Pending`;
+
     await ctx.editMessageText(
-      `✅ سفارش ثبت شد.\n\n` +
-      `🆔 شماره سفارش: #${inserted.rows[0].id}\n` +
-      `📊 تعداد: ${Number(data.quantity).toLocaleString("en-US")}\n` +
-      `💵 مبلغ: $${charge.toFixed(2)}\n` +
-      `⏳ وضعیت: Pending`,
-      mainMenu()
+      successText,
+      htmlText(successText, mainMenu())
     );
   } catch (error) {
     try {
@@ -1243,7 +1292,7 @@ bot.action("menu:orders", async (ctx) => {
   const listText = result.rows
     .map(
       (order) =>
-        `#${order.id} | ${order.service_name ?? "Service"}\n` +
+        `#${order.id} | ${htmlServiceName(order.service_name ?? "Service")}\n` +
         `تعداد: ${Number(order.quantity).toLocaleString("en-US")} | ` +
         `$${Number(order.charge).toFixed(2)} | ${order.status}`
     )
