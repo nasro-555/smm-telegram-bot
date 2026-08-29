@@ -1102,7 +1102,7 @@ async function replyMenuBalance(ctx) {
   );
 
   const text =
-    `${htmlMenuTitle("balance", "موجودی من")}\\n\\n` +
+    `${htmlMenuTitle("balance", "کیف پول")}\\n\\n` +
     `موجودی شما: $${balance.toFixed(2)}\\n\\n` +
     `${htmlMenuTitle("deposit", "افزایش موجودی")}\\n` +
     "از طریق دکمه زیر";
@@ -1306,7 +1306,7 @@ bot.on("text", async (ctx) => {
     );
   }
 
-  if (text === "موجودی من") {
+  if (text === "کیف پول") {
     return replyMenuBalance(ctx);
   }
 
@@ -1951,7 +1951,7 @@ bot.action("menu:balance", async (ctx) => {
   );
 
   const text =
-    `${htmlMenuTitle("balance", "موجودی من")}\n\n` +
+    `${htmlMenuTitle("balance", "کیف پول")}\n\n` +
     `موجودی شما: $${balance.toFixed(2)}\n\n` +
     `${htmlMenuTitle("deposit", "افزایش موجودی")}\n` +
     "از طریق دکمه زیر";

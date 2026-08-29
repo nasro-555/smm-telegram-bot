@@ -170,7 +170,7 @@ export const mainMenu = () =>
         CUSTOM_EMOJI.menu.orders
       ),
       customEmojiCallback(
-        "موجودی من",
+        "کیف پول",
         "menu:balance",
         CUSTOM_EMOJI.menu.balance
       )
@@ -250,7 +250,7 @@ export const persistentMenu = () => ({
           style: "primary"
         },
         {
-          text: "موجودی من",
+          text: "کیف پول",
           icon_custom_emoji_id: CUSTOM_EMOJI.menu.balance,
           style: "primary"
         }
