@@ -18,7 +18,7 @@ export const CUSTOM_EMOJI = {
   },
   menu: {
     newOrder: "5269749315403802774",
-    balance: "5814447916969890525",
+    balance: "5397586104981403273",
     orders: "6269366244462301331",
     prices: "5388590673937053524",
     deposit: "5814556334829343625",
@@ -154,13 +154,6 @@ export const mainMenu = () =>
         "لیست محصولات",
         "menu:new_order",
         CUSTOM_EMOJI.menu.newOrder
-      )
-    ],
-    [
-      customEmojiCallback(
-        "قیمت بسته‌ها",
-        "menu:prices",
-        CUSTOM_EMOJI.menu.prices
       )
     ],
     [
