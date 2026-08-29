@@ -1292,7 +1292,7 @@ bot.on("text", async (ctx) => {
 
   const text = ctx.message.text.trim();
 
-  if (text === "ایجاد سفارش جدید") {
+  if (text === "لیست محصولات") {
     return replyMenuPlatforms(
       ctx,
       "order"

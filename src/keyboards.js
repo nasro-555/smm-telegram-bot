@@ -151,7 +151,7 @@ export const mainMenu = () =>
   Markup.inlineKeyboard([
     [
       customEmojiCallback(
-        "ایجاد سفارش جدید",
+        "لیست محصولات",
         "menu:new_order",
         CUSTOM_EMOJI.menu.newOrder
       )
@@ -231,7 +231,7 @@ export const persistentMenu = () => ({
     keyboard: [
       [
         {
-          text: "ایجاد سفارش جدید",
+          text: "لیست محصولات",
           icon_custom_emoji_id: CUSTOM_EMOJI.menu.newOrder,
           style: "success"
         }
