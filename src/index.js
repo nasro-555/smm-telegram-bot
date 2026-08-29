@@ -1442,11 +1442,75 @@ bot.on("text", async (ctx) => {
       Number(session.data.selling_rate)
     );
 
+    const balanceResult = await query(
+      `SELECT balance FROM users WHERE telegram_id = $1`,
+      [ctx.from.id]
+    );
+
+    const balance = Number(
+      balanceResult.rows[0]?.balance ?? 0
+    );
+
+    if (balance + 1e-9 < charge) {
+      const shortfall = Number(
+        (charge - balance).toFixed(2)
+      );
+
+      await setSession(
+        ctx.from.id,
+        "provider_quantity",
+        {
+          ...session.data,
+          pending_quantity: quantity,
+          pending_charge: charge,
+          pending_shortfall: shortfall
+        }
+      );
+
+      const insufficientText =
+        `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${quantity.toLocaleString("en-US")}\n` +
+        `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} قیمت نهایی: $${charge.toFixed(2)}\n` +
+        `${tgEmoji(CUSTOM_EMOJI.menu.balance, "💰")} موجودی شما: $${balance.toFixed(2)}\n\n` +
+        `${tgEmoji(ERROR_CUSTOM_EMOJI_ID, "❌")} موجودی حساب شما کافی نیست.\n` +
+        `برای این سفارش $${charge.toFixed(2)} موجودی لازم دارید و $${shortfall.toFixed(2)} کم دارید.\n\n` +
+        "از دکمه زیر حساب خود را با Heleket شارژ کنید:";
+
+      return ctx.reply(
+        insufficientText,
+        htmlText(
+          insufficientText,
+          Markup.inlineKeyboard([
+            [
+              customEmojiCallback(
+                "شارژ با Heleket",
+                "provider:heleket_topup",
+                CUSTOM_EMOJI.menu.deposit
+              )
+            ],
+            [
+              customEmojiCallback(
+                "لغو",
+                "menu:home",
+                CUSTOM_EMOJI.back
+              )
+            ]
+          ])
+        )
+      );
+    }
+
+    const {
+      pending_quantity,
+      pending_charge,
+      pending_shortfall,
+      ...cleanSessionData
+    } = session.data;
+
     await setSession(
       ctx.from.id,
       "provider_link",
       {
-        ...session.data,
+        ...cleanSessionData,
         quantity,
         charge
       }
@@ -1454,7 +1518,8 @@ bot.on("text", async (ctx) => {
 
     const quantityText =
       `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${quantity.toLocaleString("en-US")}\n` +
-      `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} قیمت نهایی: $${charge.toFixed(2)}\n\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} قیمت نهایی: $${charge.toFixed(2)}\n` +
+      `${tgEmoji(CUSTOM_EMOJI.menu.balance, "💰")} موجودی شما: $${balance.toFixed(2)}\n\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.link, "🔗")} حالا لینک موردنظر را ارسال کنید.`;
 
     return ctx.reply(
@@ -1962,6 +2027,143 @@ bot.action("menu:deposit", async (ctx) => {
       ])
     )
   );
+});
+
+bot.action("provider:heleket_topup", async (ctx) => {
+  await answerCb(ctx);
+
+  if (!publicBaseUrl()) {
+    return editError(
+      ctx,
+      "دامنه عمومی Railway هنوز ساخته نشده است.",
+      mainMenu()
+    );
+  }
+
+  const session = await getSession(ctx.from.id);
+  const shortfall = Number(
+    session.data?.pending_shortfall ?? 0
+  );
+
+  if (
+    session.state !== "provider_quantity" ||
+    !Number.isFinite(shortfall) ||
+    shortfall <= 0
+  ) {
+    return editError(
+      ctx,
+      "اطلاعات شارژ این سفارش پیدا نشد. دوباره تعداد سفارش را وارد کنید.",
+      mainMenu()
+    );
+  }
+
+  // Heleket flow currently accepts deposits from $1.
+  const amount = Math.max(
+    1,
+    Number(shortfall.toFixed(2))
+  );
+
+  const orderId =
+    `dep_${ctx.from.id}_${Date.now()}`;
+
+  try {
+    await query(
+      `INSERT INTO deposits (
+         telegram_id,
+         provider,
+         external_order_id,
+         amount_usd,
+         status
+       )
+       VALUES ($1,'heleket',$2,$3,'creating')`,
+      [
+        ctx.from.id,
+        orderId,
+        amount
+      ]
+    );
+
+    const invoice =
+      await createHeleketInvoice({
+        amount,
+        orderId,
+        telegramId: ctx.from.id
+      });
+
+    await query(
+      `UPDATE deposits
+       SET invoice_uuid = $1,
+           status = $2,
+           provider_payload = $3::jsonb,
+           updated_at = NOW()
+       WHERE external_order_id = $4`,
+      [
+        String(invoice.uuid ?? ""),
+        String(
+          invoice.status ??
+          invoice.payment_status ??
+          "check"
+        ),
+        JSON.stringify(invoice),
+        orderId
+      ]
+    );
+
+    const invoiceText =
+      `${htmlMenuTitle("deposit", "شارژ حساب با Heleket")}\n\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} مبلغ شارژ: $${amount.toFixed(2)}\n` +
+      `مبلغ کمبود سفارش: $${shortfall.toFixed(2)}\n\n` +
+      "پس از تأیید پرداخت، موجودی شما خودکار افزایش می‌یابد. سپس همان تعداد سفارش را دوباره ارسال کنید.";
+
+    return ctx.editMessageText(
+      invoiceText,
+      htmlText(
+        invoiceText,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.url(
+              "پرداخت با Heleket",
+              invoice.url
+            )
+          ],
+          [
+            customEmojiCallback(
+              "برگشت",
+              "menu:home",
+              CUSTOM_EMOJI.back
+            )
+          ]
+        ])
+      )
+    );
+  } catch (error) {
+    console.error(
+      "Provider Heleket topup error:",
+      error
+    );
+
+    await query(
+      `UPDATE deposits
+       SET status = 'failed',
+           provider_payload = $1::jsonb,
+           updated_at = NOW()
+       WHERE external_order_id = $2`,
+      [
+        JSON.stringify({
+          error: String(
+            error.message || error
+          )
+        }),
+        orderId
+      ]
+    ).catch(() => {});
+
+    return editError(
+      ctx,
+      "ساخت فاکتور Heleket ممکن نشد. کمی بعد دوباره امتحان کنید.",
+      mainMenu()
+    );
+  }
 });
 
 bot.action("deposit:heleket", async (ctx) => {
