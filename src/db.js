@@ -156,7 +156,16 @@ async function seedPlatformsAndCategories() {
       ["بغیه خدمات", "🔹", "other-services", 5]
     ];
 
-    if (platform.slug === "tiktok") {
+    if (platform.slug === "instagram") {
+      categories = [
+        ["فالوور", "👥", "followers", 1],
+        ["لایک", "❤️", "likes", 2],
+        ["ویو", "👁", "views", 3],
+        ["کامنت", "💬", "comments", 4],
+        ["اشتراک گذاری ویدیو یا عکس", "↗️", "shares", 5],
+        ["بغیه خدمات", "🔹", "other-services", 6]
+      ];
+    } else if (platform.slug === "tiktok") {
       categories = [
         ["فالوور", "👥", "followers", 1],
         ["لایک", "❤️", "likes", 2],

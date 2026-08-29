@@ -30,6 +30,8 @@ export const CUSTOM_EMOJI = {
     comments: "5389035628253950810",
     views: "5386638267703635704",
     live: "6280793816702126346",
+    shares: "5264759912025564026",
+    rocket: "6228656087709520666",
     other: "5447410659077661506"
   },
   info: {
@@ -80,6 +82,18 @@ export function categoryEmojiId(categoryOrLabel) {
     typeof categoryOrLabel === "string" ? categoryOrLabel : categoryOrLabel?.name
   );
 
+  if (name.includes("rocket speed")) {
+    return CUSTOM_EMOJI.categories.rocket;
+  }
+
+  if (
+    name.includes("اشتراک گذاری") ||
+    name.includes("اشتراک‌گذاری") ||
+    name.includes("share")
+  ) {
+    return CUSTOM_EMOJI.categories.shares;
+  }
+
   if (
     name.includes("فالوور") ||
     name.includes("ممبر") ||
@@ -93,6 +107,8 @@ export function categoryEmojiId(categoryOrLabel) {
   if (
     name.includes("لایک") ||
     name === "like" ||
+    name.includes(" like") ||
+    name.startsWith("like ") ||
     name.includes("ری‌اکشن") ||
     name.includes("reaction")
   ) {
@@ -255,4 +271,3 @@ export const persistentMenu = () => ({
     input_field_placeholder: "یکی از گزینه‌ها را انتخاب کنید"
   }
 });
-
