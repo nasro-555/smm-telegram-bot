@@ -200,10 +200,53 @@ async function seedPlatformsAndCategories() {
         ["ویو خودکار", "👁", "auto-views", 7],
         ["بغیه خدمات", "🔹", "other-services", 8]
       ];
+    } else if (platform.slug === "whatsapp") {
+      categories = [
+        ["ممبر کانال واتساپ", "👥", "followers", 1],
+        ["WA Reaction", "❤️", "likes", 2],
+        ["نظرسنجی", "💬", "poll-votes", 3],
+        ["بغیه خدمات", "🔹", "other-services", 4]
+      ];
+    } else if (platform.slug === "kik") {
+      categories = [
+        ["Clip / Video / Followers", "👥", "media-followers", 1],
+        ["AI Chat Comment", "💬", "comments", 2],
+        ["Live Stream Views", "👁", "live-stream", 3],
+        ["بغیه خدمات", "🔹", "other-services", 4]
+      ];
+    } else if (platform.slug === "threads") {
+      categories = [
+        ["Followers", "👥", "followers", 1],
+        ["Likes", "❤️", "likes", 2],
+        ["بغیه خدمات", "🔹", "other-services", 3]
+      ];
+    } else if (platform.slug === "linkedin") {
+      categories = [
+        ["Followers", "👥", "followers", 1],
+        ["Group Members", "👥", "group-members", 2],
+        ["Post Likes", "❤️", "likes", 3],
+        ["Reposts", "↗️", "reposts", 4],
+        ["Sends", "↗️", "sends", 5],
+        ["Connections", "👥", "connections", 6],
+        ["بغیه خدمات", "🔹", "other-services", 7]
+      ];
     } else if (platform.slug === "google-maps") {
       categories = [
-        ["خدمات Google Maps", "📍", "maps-services", 1],
+        ["Reviews", "💬", "reviews", 1],
         ["بغیه خدمات", "🔹", "other-services", 2]
+      ];
+    } else if (platform.slug === "likee") {
+      categories = [
+        ["Followers", "👥", "followers", 1],
+        ["Views", "👁", "views", 2],
+        ["Comments", "💬", "comments", 3],
+        ["بغیه خدمات", "🔹", "other-services", 4]
+      ];
+    } else if (platform.slug === "snapchat") {
+      categories = [
+        ["Followers", "👥", "followers", 1],
+        ["Likes", "❤️", "likes", 2],
+        ["بغیه خدمات", "🔹", "other-services", 3]
       ];
     }
 
@@ -218,49 +261,21 @@ async function seedPlatformsAndCategories() {
              emoji = EXCLUDED.emoji,
              status = TRUE,
              sort_order = EXCLUDED.sort_order`,
-        [
-          platform.id,
-          name,
-          emoji,
-          slug,
-          sortOrder
-        ]
+        [platform.id, name, emoji, slug, sortOrder]
       );
     }
 
-    if (platform.slug === "twitter") {
-      await query(
-        `UPDATE categories
-         SET status = FALSE
-         WHERE platform_id = $1
-           AND slug NOT IN (
-             'followers',
-             'likes',
-             'views',
-             'other-services'
-           )`,
-        [platform.id]
-      );
-    }
+    const activeSlugs = categories.map((category) => category[2]);
 
-    if (platform.slug === "telegram") {
-      await query(
-        `UPDATE categories
-         SET status = FALSE
-         WHERE platform_id = $1
-           AND slug NOT IN (
-             'followers',
-             'premium-members',
-             'likes',
-             'auto-reactions',
-             'story-reactions',
-             'views',
-             'auto-views',
-             'other-services'
-           )`,
-        [platform.id]
-      );
-    }
+    await query(
+      `UPDATE categories
+       SET status = CASE
+         WHEN slug = ANY($2::text[]) THEN TRUE
+         ELSE FALSE
+       END
+       WHERE platform_id = $1`,
+      [platform.id, activeSlugs]
+    );
   }
 }
 

@@ -89,7 +89,9 @@ export function categoryEmojiId(categoryOrLabel) {
   if (
     name.includes("اشتراک گذاری") ||
     name.includes("اشتراک‌گذاری") ||
-    name.includes("share")
+    name.includes("share") ||
+    name.includes("repost") ||
+    name.includes("send")
   ) {
     return CUSTOM_EMOJI.categories.shares;
   }
@@ -99,23 +101,29 @@ export function categoryEmojiId(categoryOrLabel) {
     name.includes("ممبر") ||
     name.includes("subscriber") ||
     name.includes("سابسکرایبر") ||
-    name.includes("member")
+    name.includes("follower") ||
+    name.includes("member") ||
+    name.includes("connection")
   ) {
     return CUSTOM_EMOJI.categories.followers;
   }
 
   if (
     name.includes("لایک") ||
-    name === "like" ||
-    name.includes(" like") ||
-    name.startsWith("like ") ||
+    name.includes("like") ||
     name.includes("ری‌اکشن") ||
     name.includes("reaction")
   ) {
     return CUSTOM_EMOJI.categories.likes;
   }
 
-  if (name.includes("کامنت") || name.includes("comment")) {
+  if (
+    name.includes("کامنت") ||
+    name.includes("comment") ||
+    name.includes("نظرسنجی") ||
+    name.includes("poll") ||
+    name.includes("review")
+  ) {
     return CUSTOM_EMOJI.categories.comments;
   }
 

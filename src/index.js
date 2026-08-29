@@ -506,8 +506,24 @@ async function servicePanels(
     info.category_slug
   );
 
+  if (panels.length === 1) {
+    const panel = panels[0];
+
+    return providerPanel(
+      ctx,
+      panel.providerCode,
+      panel.panelCode,
+      mode,
+      platformId,
+      categoryId,
+      0
+    );
+  }
+
   const rows = panels.map((panel) => {
-    const iconId = categoryEmojiId(panel.label);
+    const iconId =
+      categoryEmojiId(panel.label) ??
+      categoryEmojiId(info.category_name);
 
     return [
       customEmojiCallback(
