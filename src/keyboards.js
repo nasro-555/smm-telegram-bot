@@ -256,7 +256,7 @@ export const persistentMenu = () => ({
         }
       ]
     ],
-    is_persistent: true,
+    is_persistent: false,
     resize_keyboard: true,
     one_time_keyboard: false,
     input_field_placeholder: "یکی از گزینه‌ها را انتخاب کنید"
