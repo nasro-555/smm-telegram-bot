@@ -177,11 +177,6 @@ export const mainMenu = () =>
     ],
     [
       customEmojiCallback(
-        "افزایش موجودی",
-        "menu:deposit",
-        CUSTOM_EMOJI.menu.deposit
-      ),
-      customEmojiCallback(
         "پشتیبانی",
         "menu:support",
         CUSTOM_EMOJI.menu.support
@@ -261,11 +256,6 @@ export const persistentMenu = () => ({
         }
       ],
       [
-        {
-          text: "افزایش موجودی",
-          icon_custom_emoji_id: CUSTOM_EMOJI.menu.deposit,
-          style: "success"
-        },
         {
           text: "پشتیبانی",
           icon_custom_emoji_id: CUSTOM_EMOJI.menu.support,

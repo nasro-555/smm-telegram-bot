@@ -1103,11 +1103,31 @@ async function replyMenuBalance(ctx) {
 
   const text =
     `${htmlMenuTitle("balance", "موجودی من")}\\n\\n` +
-    `موجودی شما: $${balance.toFixed(2)}`;
+    `موجودی شما: $${balance.toFixed(2)}\\n\\n` +
+    `${htmlMenuTitle("deposit", "افزایش موجودی")}\\n` +
+    "از طریق دکمه زیر";
 
   return ctx.reply(
     text,
-    htmlText(text, mainMenu())
+    htmlText(
+      text,
+      Markup.inlineKeyboard([
+        [
+          customEmojiCallback(
+            "Heleket [ارز دیجیتال]",
+            "deposit:heleket",
+            CUSTOM_EMOJI.menu.deposit
+          )
+        ],
+        [
+          customEmojiCallback(
+            "برگشت",
+            "menu:home",
+            CUSTOM_EMOJI.back
+          )
+        ]
+      ])
+    )
   );
 }
 
@@ -1242,14 +1262,26 @@ async function replyMenuSupport(ctx) {
 
   const support =
     process.env.SUPPORT_USERNAME ||
-    "@YourSupportUsername";
+    "@World_panel";
 
   const text =
-    `${htmlMenuTitle("support", "پشتیبانی")}\\n\\n${escapeHtml(support)}`;
+    `${htmlMenuTitle("support", "پشتیبانی")}\\n\\n` +
+    `یوزرنیم پشتیبانی: ${escapeHtml(support)}`;
 
   return ctx.reply(
     text,
-    htmlText(text, mainMenu())
+    htmlText(
+      text,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.url(
+            "پیام به پشتیبانی",
+            "https://t.me/World_panel"
+          )
+        ],
+        ...mainMenu().reply_markup.inline_keyboard
+      ])
+    )
   );
 }
 
@@ -1796,7 +1828,7 @@ bot.action("provider:confirm", async (ctx) => {
 
     const successText =
       `${tgEmoji(ORDER_RESULT_EMOJI.success, "✅")} سفارش ثبت شد.\n\n` +
-      `${tgEmoji(ORDER_RESULT_EMOJI.orderId, "🆔")} شماره سفارش: #${inserted.rows[0].id}\n` +
+      `${tgEmoji(ORDER_RESULT_EMOJI.orderId, "🆔")} Order ID: ${escapeHtml(String(providerResult.order))}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${Number(data.quantity).toLocaleString("en-US")}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} مبلغ: $${charge.toFixed(2)}\n` +
       `${tgEmoji(ORDER_RESULT_EMOJI.status, "⏳")} وضعیت: Pending`;
@@ -1905,6 +1937,7 @@ bot.action(/^order:cancel_api:(\d+)$/, async (ctx) => {
 
 bot.action("menu:balance", async (ctx) => {
   await answerCb(ctx);
+  await clearSession(ctx.from.id);
 
   const result = await query(
     `SELECT balance
@@ -1919,11 +1952,31 @@ bot.action("menu:balance", async (ctx) => {
 
   const text =
     `${htmlMenuTitle("balance", "موجودی من")}\n\n` +
-    `موجودی شما: $${balance.toFixed(2)}`;
+    `موجودی شما: $${balance.toFixed(2)}\n\n` +
+    `${htmlMenuTitle("deposit", "افزایش موجودی")}\n` +
+    "از طریق دکمه زیر";
 
   await ctx.editMessageText(
     text,
-    htmlText(text, mainMenu())
+    htmlText(
+      text,
+      Markup.inlineKeyboard([
+        [
+          customEmojiCallback(
+            "Heleket [ارز دیجیتال]",
+            "deposit:heleket",
+            CUSTOM_EMOJI.menu.deposit
+          )
+        ],
+        [
+          customEmojiCallback(
+            "برگشت",
+            "menu:home",
+            CUSTOM_EMOJI.back
+          )
+        ]
+      ])
+    )
   );
 });
 
@@ -2207,17 +2260,30 @@ bot.action("deposit:heleket", async (ctx) => {
 
 bot.action("menu:support", async (ctx) => {
   await answerCb(ctx);
+  await clearSession(ctx.from.id);
 
   const support =
     process.env.SUPPORT_USERNAME ||
-    "@YourSupportUsername";
+    "@World_panel";
 
   const text =
-    `${htmlMenuTitle("support", "پشتیبانی")}\n\n${escapeHtml(support)}`;
+    `${htmlMenuTitle("support", "پشتیبانی")}\n\n` +
+    `یوزرنیم پشتیبانی: ${escapeHtml(support)}`;
 
   await ctx.editMessageText(
     text,
-    htmlText(text, mainMenu())
+    htmlText(
+      text,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.url(
+            "پیام به پشتیبانی",
+            "https://t.me/World_panel"
+          )
+        ],
+        ...mainMenu().reply_markup.inline_keyboard
+      ])
+    )
   );
 });
 
