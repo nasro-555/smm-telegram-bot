@@ -22,7 +22,10 @@ export const CUSTOM_EMOJI = {
     orders: "6269366244462301331",
     prices: "5388590673937053524",
     deposit: "5814556334829343625",
-    support: "5431376038628171216"
+    support: "5431376038628171216",
+    certificate: "6118630226860707869",
+    iphone: "5323354952549015465",
+    ipad: "5235967138467955882"
   },
   categories: {
     followers: "5165730662103122933",
@@ -158,8 +161,9 @@ export const mainMenu = () =>
     ],
     [
       customEmojiCallback(
-        "📜 Certificate آیفون / آیپد",
-        "menu:certificate"
+        "Certificate آیفون / آیپد",
+        "menu:certificate",
+        CUSTOM_EMOJI.menu.certificate
       )
     ],
     [
@@ -237,7 +241,8 @@ export const persistentMenu = () => ({
       ],
       [
         {
-          text: "📜 Certificate آیفون / آیپد",
+          text: "Certificate آیفون / آیپد",
+          icon_custom_emoji_id: CUSTOM_EMOJI.menu.certificate,
           style: "primary"
         }
       ],

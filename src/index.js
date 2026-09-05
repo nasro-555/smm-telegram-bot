@@ -1463,13 +1463,15 @@ async function showCertificateDevices(ctx, { edit = true } = {}) {
 
   const options = Markup.inlineKeyboard([
     [
-      Markup.button.callback(
-        "📱 iPhone",
-        "cert:device:iphone"
+      customEmojiCallback(
+        "iPhone",
+        "cert:device:iphone",
+        CUSTOM_EMOJI.menu.iphone
       ),
-      Markup.button.callback(
-        "📱 iPad",
-        "cert:device:ipad"
+      customEmojiCallback(
+        "iPad",
+        "cert:device:ipad",
+        CUSTOM_EMOJI.menu.ipad
       )
     ],
     [
