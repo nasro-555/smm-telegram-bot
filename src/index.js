@@ -1411,7 +1411,7 @@ async function sendCertificateFiles(ctx, certificate, certificateId = null) {
 
   if (!sent) {
     await ctx.reply(
-      "Certificate ثبت شده است، اما API در این پاسخ فایل قابل دانلود برنگرداند. از بخش Certificateهای من دوباره دریافت کنید."
+      "Certificate ثبت شده است، اما API در این پاسخ فایل قابل دانلود برنگرداند. کمی بعد دوباره از بخش Certificate تلاش کنید."
     );
   }
 }
@@ -1453,45 +1453,121 @@ async function getUserBalance(telegramId) {
   return Number(result.rows[0]?.balance ?? 0);
 }
 
+function certificateTitle(label = "Certificate") {
+  return `${tgEmoji(CUSTOM_EMOJI.menu.certificate, "📜")} ${escapeHtml(label)}`;
+}
+
 async function showCertificateDevices(ctx, { edit = true } = {}) {
   const balance = await getUserBalance(ctx.from.id);
 
   const text =
-    `📜 Certificate آیفون / آیپد\n\n` +
+    `${certificateTitle("Certificate آیفون / آیپد")}\n\n` +
     `موجودی کیف پول شما: $${balance.toFixed(2)}\n` +
     "نوع دستگاه را انتخاب کنید:";
 
-  const options = Markup.inlineKeyboard([
-    [
-      customEmojiCallback(
-        "iPhone",
-        "cert:device:iphone",
-        CUSTOM_EMOJI.menu.iphone
-      ),
-      customEmojiCallback(
-        "iPad",
-        "cert:device:ipad",
-        CUSTOM_EMOJI.menu.ipad
-      )
-    ],
-    [
-      Markup.button.callback(
-        "Certificateهای من",
-        "cert:my"
-      )
-    ],
-    [
-      customEmojiCallback(
-        "برگشت",
-        "menu:home",
-        CUSTOM_EMOJI.back
-      )
-    ]
-  ]);
+  const options = htmlText(
+    text,
+    Markup.inlineKeyboard([
+      [
+        customEmojiCallback(
+          "iPhone",
+          "cert:device:iphone",
+          CUSTOM_EMOJI.menu.iphone
+        ),
+        customEmojiCallback(
+          "iPad",
+          "cert:device:ipad",
+          CUSTOM_EMOJI.menu.ipad
+        )
+      ],
+      [
+        customEmojiCallback(
+          "برگشت",
+          "menu:home",
+          CUSTOM_EMOJI.back
+        )
+      ]
+    ])
+  );
 
   return edit && ctx.callbackQuery
     ? ctx.editMessageText(text, options)
     : ctx.reply(text, options);
+}
+
+
+function certificateCustomerPlan(plan, device = "iphone") {
+  const rawName = String(plan?.plan_name || "");
+  const name = rawName
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // These provider plans are not products we sell.
+  if (
+    /dev\s*[|/\\]?\s*dis/i.test(rawName) ||
+    name.includes("developer") ||
+    name.includes("distribution")
+  ) {
+    return null;
+  }
+
+  const safeDevice =
+    String(device).toLowerCase() === "ipad" ? "ipad" : "iphone";
+
+  let warrantyLabel = null;
+
+  if (safeDevice === "iphone") {
+    if (
+      /\binfinity\b/i.test(rawName) ||
+      name.includes("full warranty")
+    ) {
+      warrantyLabel = "full warranty";
+    } else if (/\b10\s*m\b/i.test(rawName)) {
+      warrantyLabel = "10 months warranty";
+    } else if (/\b(?:5|6)\s*m\b/i.test(rawName)) {
+      // Nekoo currently calls this iOS 6M; our sold package is 5 months warranty.
+      warrantyLabel = "5 months warranty";
+    } else if (/\b3\s*m\b/i.test(rawName)) {
+      warrantyLabel = "3 months warranty";
+    } else if (/\b2\s*m\b/i.test(rawName)) {
+      warrantyLabel = "2 months warranty";
+    } else if (/\b1\s*m\b/i.test(rawName)) {
+      warrantyLabel = "1 month warranty";
+    }
+  } else {
+    if (/\b10\s*m\b/i.test(rawName)) {
+      warrantyLabel = "10 months warranty";
+    } else if (/\b1\s*m\b/i.test(rawName)) {
+      warrantyLabel = "1 month warranty";
+    }
+  }
+
+  // Unknown/provider-only plans stay hidden instead of being sold by accident.
+  if (!warrantyLabel) {
+    return null;
+  }
+
+  const sellingPrice = certificateSellingPrice(
+    plan.cost,
+    plan.plan_name,
+    safeDevice
+  );
+
+  const priceText = Number(sellingPrice)
+    .toFixed(2)
+    .replace(/\.00$/, "")
+    .replace(/(\.\d)0$/, "$1");
+
+  return {
+    id: plan.id,
+    plan_name: plan.plan_name,
+    display_name:
+      `1 year ${priceText}$ with ${warrantyLabel}`,
+    cost: Number(plan.cost),
+    selling_price: Number(sellingPrice)
+  };
 }
 
 async function showCertificatePlans(ctx, device = "iphone", page = 0, { edit = true } = {}) {
@@ -1502,10 +1578,9 @@ async function showCertificatePlans(ctx, device = "iphone", page = 0, { edit = t
 
     if (!plans.length) {
       const text =
-        `📜 Certificate ${deviceLabel}\n\nفعلاً هیچ پلن فعالی از API دریافت نشد.`;
+        `${certificateTitle(`Certificate ${deviceLabel}`)}\n\nفعلاً هیچ پلن فعالی از API دریافت نشد.`;
 
       const options = Markup.inlineKeyboard([
-        [Markup.button.callback("Certificateهای من", "cert:my")],
         [customEmojiCallback("برگشت", "menu:home", CUSTOM_EMOJI.back)]
       ]);
 
@@ -1514,12 +1589,23 @@ async function showCertificatePlans(ctx, device = "iphone", page = 0, { edit = t
         : ctx.reply(text, options);
     }
 
-    const normalizedPlans = plans.map((plan) => ({
-      id: plan.id,
-      plan_name: plan.plan_name,
-      cost: Number(plan.cost),
-      selling_price: certificateSellingPrice(plan.cost, plan.plan_name, safeDevice)
-    }));
+    const normalizedPlans = plans
+      .map((plan) => certificateCustomerPlan(plan, safeDevice))
+      .filter(Boolean);
+
+    if (!normalizedPlans.length) {
+      const text =
+        `${certificateTitle(`Certificate ${deviceLabel}`)}\n\n` +
+        "فعلاً هیچ‌کدام از پکیج‌های قابل فروش ما در API فعال نیست.";
+
+      const options = Markup.inlineKeyboard([
+        [customEmojiCallback("برگشت", "menu:home", CUSTOM_EMOJI.back)]
+      ]);
+
+      return edit && ctx.callbackQuery
+        ? ctx.editMessageText(text, options)
+        : ctx.reply(text, options);
+    }
 
     await setSession(
       ctx.from.id,
@@ -1546,7 +1632,7 @@ async function showCertificatePlans(ctx, device = "iphone", page = 0, { edit = t
 
     const rows = pagePlans.map((plan, offset) => [
       Markup.button.callback(
-        `${shortName(plan.plan_name, 30)} | $${Number(plan.selling_price).toFixed(2)}`,
+        shortName(plan.display_name, 52),
         `cert:plan:${start + offset}:${safePage}`
       )
     ]);
@@ -1573,12 +1659,6 @@ async function showCertificatePlans(ctx, device = "iphone", page = 0, { edit = t
     }
 
     rows.push([
-      Markup.button.callback(
-        "Certificateهای من",
-        "cert:my"
-      )
-    ]);
-    rows.push([
       customEmojiCallback(
         "برگشت",
         "menu:home",
@@ -1588,14 +1668,17 @@ async function showCertificatePlans(ctx, device = "iphone", page = 0, { edit = t
 
     const balance = await getUserBalance(ctx.from.id);
     const text =
-      `📜 Certificate ${deviceLabel}\n\n` +
+      `${certificateTitle(`Certificate ${deviceLabel}`)}\n\n` +
       `موجودی کیف پول شما: $${balance.toFixed(2)}\n` +
       "یکی از پلن‌های زیر را انتخاب کنید:" +
       (totalPages > 1
         ? `\nصفحه ${safePage + 1} از ${totalPages}`
         : "");
 
-    const options = Markup.inlineKeyboard(rows);
+    const options = htmlText(
+      text,
+      Markup.inlineKeyboard(rows)
+    );
 
     return edit && ctx.callbackQuery
       ? ctx.editMessageText(text, options)
@@ -1621,7 +1704,7 @@ async function renderCertificateConfirm(ctx, data, { edit = true } = {}) {
 
   const text =
     `📜 تأیید خرید Certificate\n\n` +
-    `پلن: ${escapeHtml(data.plan_name)}\n` +
+    `پلن: ${escapeHtml(data.display_name || data.plan_name)}\n` +
     `UDID: <code>${escapeHtml(data.udid)}</code>\n` +
     `قیمت: $${price.toFixed(2)}\n` +
     `موجودی شما: $${balance.toFixed(2)}` +
@@ -1641,7 +1724,7 @@ async function renderCertificateConfirm(ctx, data, { edit = true } = {}) {
   } else {
     rows.push([
       customEmojiCallback(
-        "شارژ با Heleket",
+        "افزایش موجودی با کریپتو و تتر",
         "cert:heleket_topup",
         CUSTOM_EMOJI.menu.deposit
       )
@@ -1658,6 +1741,85 @@ async function renderCertificateConfirm(ctx, data, { edit = true } = {}) {
   const options = htmlText(
     text,
     Markup.inlineKeyboard(rows)
+  );
+
+  return edit && ctx.callbackQuery
+    ? ctx.editMessageText(text, options)
+    : ctx.reply(text, options);
+}
+
+async function renderCertificateBalancePrecheck(
+  ctx,
+  data,
+  { edit = true } = {}
+) {
+  const balance = await getUserBalance(ctx.from.id);
+  const price = Number(data?.selling_price || 0);
+  const shortfall = Math.max(
+    0,
+    Number((price - balance).toFixed(2))
+  );
+
+  if (shortfall <= 0) {
+    const selectedDevice =
+      data?.device === "ipad" ? "ipad" : "iphone";
+    const selectedDeviceLabel =
+      selectedDevice === "ipad" ? "iPad" : "iPhone";
+
+    await setSession(
+      ctx.from.id,
+      "certificate_udid",
+      {
+        device: selectedDevice,
+        selected_plan: data.selected_plan
+      }
+    );
+
+    const text =
+      `${certificateTitle(data.display_name || data.selected_plan?.plan_name || "Certificate")}\n\n` +
+      `قیمت نهایی: $${price.toFixed(2)}\n` +
+      `موجودی شما: $${balance.toFixed(2)}\n\n` +
+      `UDID ${selectedDeviceLabel} را ارسال کنید.\n\n` +
+      "برای لغو: /cancel";
+
+    const options = htmlText(text);
+
+    return edit && ctx.callbackQuery
+      ? ctx.editMessageText(text, options)
+      : ctx.reply(text, options);
+  }
+
+  const text =
+    `${certificateTitle(data.display_name || data.selected_plan?.plan_name || "Certificate")}\n\n` +
+    `قیمت پکیج: $${price.toFixed(2)}\n` +
+    `موجودی شما: $${balance.toFixed(2)}\n` +
+    `کسری موجودی: $${shortfall.toFixed(2)}\n\n` +
+    "برای ادامه ابتدا موجودی کیف پول را افزایش دهید.";
+
+  const options = htmlText(
+    text,
+    Markup.inlineKeyboard([
+      [
+        customEmojiCallback(
+          "افزایش موجودی با کریپتو و تتر",
+          "cert:heleket_topup",
+          CUSTOM_EMOJI.menu.deposit
+        )
+      ],
+      [
+        Markup.button.callback(
+          "انتخاب پلن / دستگاه دیگر",
+          "menu:certificate"
+        )
+      ],
+      [
+        customEmojiCallback(
+          "لغو",
+          "menu:home",
+          CUSTOM_EMOJI.back
+        )
+      ]
+    ])
   );
 
   return edit && ctx.callbackQuery
@@ -1740,6 +1902,7 @@ async function handleCertificateUdid(ctx, text, session) {
     udid,
     plan_id: plan.id,
     plan_name: plan.plan_name,
+    display_name: plan.display_name || plan.plan_name,
     api_cost: Number(plan.cost || 0),
     selling_price: sellingPrice
   };
@@ -1911,23 +2074,51 @@ bot.action(/^cert:plan:(\d+):(\d+)$/, async (ctx) => {
     );
   }
 
+  const device =
+    session.data?.device === "ipad" ? "ipad" : "iphone";
+
+  const data = {
+    device,
+    selected_plan: plan,
+    plan_id: plan.id,
+    plan_name: plan.plan_name,
+    display_name: plan.display_name || plan.plan_name,
+    api_cost: Number(plan.cost || 0),
+    selling_price: Number(plan.selling_price || 0)
+  };
+
+  const balance = await getUserBalance(ctx.from.id);
+
+  if (balance + 1e-9 < data.selling_price) {
+    await setSession(
+      ctx.from.id,
+      "certificate_precheck",
+      data
+    );
+
+    return renderCertificateBalancePrecheck(
+      ctx,
+      data,
+      { edit: true }
+    );
+  }
+
   await setSession(
     ctx.from.id,
     "certificate_udid",
     {
-      device: session.data?.device === "ipad" ? "ipad" : "iphone",
+      device,
       selected_plan: plan
     }
   );
 
-  const selectedDevice =
-    session.data?.device === "ipad" ? "ipad" : "iphone";
   const selectedDeviceLabel =
-    selectedDevice === "ipad" ? "iPad" : "iPhone";
+    device === "ipad" ? "iPad" : "iPhone";
 
   const text =
-    `📜 ${escapeHtml(plan.plan_name)}\n\n` +
-    `قیمت نهایی: $${Number(plan.selling_price).toFixed(2)}\n\n` +
+    `${certificateTitle(plan.display_name || plan.plan_name)}\n\n` +
+    `قیمت نهایی: $${Number(plan.selling_price).toFixed(2)}\n` +
+    `موجودی شما: $${balance.toFixed(2)}\n\n` +
     `UDID ${selectedDeviceLabel} را ارسال کنید.\n\n` +
     "برای لغو: /cancel";
 
@@ -1987,7 +2178,6 @@ bot.action(/^cert:download:(\d+)$/, async (ctx) => {
       htmlText(
         text,
         Markup.inlineKeyboard([
-          [Markup.button.callback("Certificateهای من", "cert:my")],
           [customEmojiCallback("خانه", "menu:home", CUSTOM_EMOJI.back)]
         ])
       )
@@ -2016,6 +2206,14 @@ bot.action("cert:resume", async (ctx) => {
   await answerCb(ctx);
   const session = await getSession(ctx.from.id);
 
+  if (session.state === "certificate_precheck") {
+    return renderCertificateBalancePrecheck(
+      ctx,
+      session.data,
+      { edit: true }
+    );
+  }
+
   if (session.state !== "certificate_confirm") {
     return editError(
       ctx,
@@ -2043,7 +2241,10 @@ bot.action("cert:heleket_topup", async (ctx) => {
   }
 
   const session = await getSession(ctx.from.id);
-  if (session.state !== "certificate_confirm") {
+  if (
+    session.state !== "certificate_confirm" &&
+    session.state !== "certificate_precheck"
+  ) {
     return editError(
       ctx,
       "اطلاعات خرید Certificate پیدا نشد.",
@@ -2056,6 +2257,14 @@ bot.action("cert:heleket_topup", async (ctx) => {
   const shortfall = Math.max(0, Number((price - balance).toFixed(2)));
 
   if (shortfall <= 0) {
+    if (session.state === "certificate_precheck") {
+      return renderCertificateBalancePrecheck(
+        ctx,
+        session.data,
+        { edit: true }
+      );
+    }
+
     return renderCertificateConfirm(
       ctx,
       session.data,
@@ -2172,11 +2381,21 @@ bot.action("cert:confirm", async (ctx) => {
       );
     }
 
-    const sellingPrice = certificateSellingPrice(
-      currentPlan.cost,
-      currentPlan.plan_name,
+    const publicCurrentPlan = certificateCustomerPlan(
+      currentPlan,
       device
     );
+
+    if (!publicCurrentPlan) {
+      await clearSession(ctx.from.id);
+      return ctx.editMessageText(
+        "این پکیج دیگر در لیست محصولات قابل فروش نیست. دوباره Certificate را باز کنید.",
+        mainMenu()
+      );
+    }
+
+    const sellingPrice = publicCurrentPlan.selling_price;
+    data.display_name = publicCurrentPlan.display_name;
     const profile = await getCertificateProfile();
 
     if (profile?.api_enabled === false) {
@@ -2295,7 +2514,7 @@ bot.action("cert:confirm", async (ctx) => {
         certificateId,
         udid: data.udid,
         planId: currentPlan.id,
-        planName: currentPlan.plan_name,
+        planName: data.display_name || currentPlan.plan_name,
         apiCost: Number(response?.cost ?? currentPlan.cost ?? 0),
         charge,
         alreadyRegistered,
