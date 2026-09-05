@@ -111,6 +111,38 @@ export async function initDatabase() {
     );
   `);
 
+  await query(`
+    CREATE TABLE IF NOT EXISTS certificate_orders (
+      id BIGSERIAL PRIMARY KEY,
+      telegram_id BIGINT NOT NULL REFERENCES users(telegram_id),
+      provider TEXT NOT NULL DEFAULT 'nekoo',
+      certificate_id TEXT,
+      udid TEXT NOT NULL,
+      plan_id TEXT,
+      plan_name TEXT,
+      api_cost NUMERIC(14,4) NOT NULL DEFAULT 0,
+      charge NUMERIC(14,4) NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      already_registered BOOLEAN NOT NULL DEFAULT FALSE,
+      provision_valid BOOLEAN,
+      expired BOOLEAN,
+      pname TEXT,
+      registered_at TIMESTAMPTZ,
+      warranty_remaining_seconds BIGINT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_certificate_orders_user_created
+    ON certificate_orders (telegram_id, created_at DESC);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_certificate_orders_certificate_id
+    ON certificate_orders (certificate_id);
+  `);
+
   await seedPlatformsAndCategories();
 }
 

@@ -37,6 +37,14 @@ import {
 import {
   startHeleketServer
 } from "./payments/heleket/server.js";
+import {
+  CertificateApiError,
+  getCertificateProfile,
+  getCertificatePlans,
+  registerCertificate,
+  getCertificate,
+  certificateSellingPrice
+} from "./providers/certificate/nekoo.js";
 
 if (!process.env.BOT_TOKEN) {
   throw new Error("BOT_TOKEN is missing");
@@ -1285,6 +1293,1062 @@ async function replyMenuSupport(ctx) {
   );
 }
 
+const CERTIFICATE_PAGE_SIZE = 8;
+
+function certificateApiErrorText(error) {
+  const code = String(error?.code || "");
+
+  const map = {
+    invalid_json: "پاسخ سرویس Certificate نامعتبر بود.",
+    missing_udid: "UDID ارسال نشده است.",
+    missing_plan: "پلن Certificate مشخص نشده است.",
+    invalid_udid: "فرمت UDID درست نیست. دوباره بررسی و ارسال کنید.",
+    invalid_plan: "این پلن دیگر معتبر نیست. لیست پلن‌ها را دوباره باز کنید.",
+    unauthorized: "اتصال Certificate در حال حاضر فعال نیست. با پشتیبانی تماس بگیرید.",
+    insufficient_balance: "خرید Certificate موقتاً در دسترس نیست. با پشتیبانی تماس بگیرید.",
+    plan_locked: "این پلن برای حساب فروشنده قفل است. پلن دیگری انتخاب کنید.",
+    not_found: "Certificate پیدا نشد.",
+    rate_limited: "درخواست‌ها زیاد شده است. کمی بعد دوباره امتحان کنید.",
+    upstream_error: "سرور Certificate موقتاً در دسترس نیست. کمی بعد دوباره امتحان کنید.",
+    timeout: "پاسخ سرویس Certificate دیر رسید. کمی بعد دوباره امتحان کنید.",
+    network_error: "اتصال به سرویس Certificate ممکن نشد.",
+    config_error: "تنظیمات Certificate کامل نیست. با پشتیبانی تماس بگیرید."
+  };
+
+  return map[code] || "عملیات Certificate انجام نشد. کمی بعد دوباره امتحان کنید.";
+}
+
+function safeCertificateFilePart(value) {
+  return String(value || "certificate")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .slice(0, 48) || "certificate";
+}
+
+function certificateListFromResponse(data) {
+  if (Array.isArray(data?.certificates)) {
+    return data.certificates.filter(Boolean);
+  }
+
+  if (data?.certificate && typeof data.certificate === "object") {
+    return [data.certificate];
+  }
+
+  if (
+    data &&
+    typeof data === "object" &&
+    (data.id || data.certificate_id) &&
+    (data.p12 || data.mobileprovision || data.status)
+  ) {
+    return [data];
+  }
+
+  return [];
+}
+
+function activeCertificateFromResponse(data) {
+  return certificateListFromResponse(data).find((item) => {
+    const status = String(item?.status || "").toLowerCase();
+    const provisionValid = item?.provision_valid !== false;
+    const expired = item?.expired === true;
+    return provisionValid && !expired && (!status || status === "signed" || status === "active");
+  }) ?? null;
+}
+
+function certificateWarrantyText(seconds) {
+  const value = Math.max(0, Number(seconds) || 0);
+  const days = Math.floor(value / 86400);
+  const hours = Math.floor((value % 86400) / 3600);
+
+  if (days > 0) return `${days} روز و ${hours} ساعت`;
+  if (hours > 0) return `${hours} ساعت`;
+  return "کمتر از یک ساعت";
+}
+
+function decodeCertificateBase64(value) {
+  if (!value || typeof value !== "string") return null;
+
+  const clean = value
+    .replace(/^data:[^;]+;base64,/i, "")
+    .replace(/\s+/g, "");
+
+  if (!clean) return null;
+
+  try {
+    const buffer = Buffer.from(clean, "base64");
+    return buffer.length >= 16 ? buffer : null;
+  } catch {
+    return null;
+  }
+}
+
+async function sendCertificateFiles(ctx, certificate, certificateId = null) {
+  const id = safeCertificateFilePart(
+    certificateId || certificate?.id || "certificate"
+  );
+
+  const files = [
+    ["p12", `${id}.p12`, "P12 Certificate"],
+    ["mobileprovision", `${id}.mobileprovision`, "MobileProvision"],
+    ["devp12", `${id}-dev.p12`, "Developer P12"],
+    ["devmp", `${id}-dev.mobileprovision`, "Developer MobileProvision"]
+  ];
+
+  let sent = 0;
+
+  for (const [field, filename, caption] of files) {
+    const buffer = decodeCertificateBase64(certificate?.[field]);
+    if (!buffer) continue;
+
+    await ctx.replyWithDocument(
+      {
+        source: buffer,
+        filename
+      },
+      { caption }
+    );
+    sent += 1;
+  }
+
+  if (!sent) {
+    await ctx.reply(
+      "Certificate ثبت شده است، اما API در این پاسخ فایل قابل دانلود برنگرداند. از بخش Certificateهای من دوباره دریافت کنید."
+    );
+  }
+}
+
+function certificateInfoText({
+  certificate,
+  certificateId,
+  charge = 0,
+  alreadyRegistered = false
+}) {
+  const id = String(
+    certificateId || certificate?.id || "-"
+  );
+  const status = String(certificate?.status || "unknown");
+  const password = String(certificate?.p12_password ?? "-");
+  const warranty = certificateWarrantyText(
+    certificate?.warranty_remaining_seconds
+  );
+
+  return (
+    `✅ Certificate آماده شد.\n\n` +
+    `🆔 Certificate ID: ${escapeHtml(id)}\n` +
+    `📌 وضعیت: ${escapeHtml(status)}\n` +
+    `💵 مبلغ: $${Number(charge).toFixed(2)}\n` +
+    `🛡 گارانتی باقی‌مانده: ${escapeHtml(warranty)}\n` +
+    `🔐 پسورد P12: ${escapeHtml(password)}` +
+    (alreadyRegistered
+      ? "\n\nاین Certificate از قبل برای حساب شما ثبت شده بود و دوباره هزینه‌ای دریافت نشد."
+      : "")
+  );
+}
+
+async function getUserBalance(telegramId) {
+  const result = await query(
+    `SELECT balance FROM users WHERE telegram_id = $1`,
+    [telegramId]
+  );
+
+  return Number(result.rows[0]?.balance ?? 0);
+}
+
+async function showCertificateDevices(ctx, { edit = true } = {}) {
+  const balance = await getUserBalance(ctx.from.id);
+
+  const text =
+    `📜 Certificate آیفون / آیپد\n\n` +
+    `موجودی کیف پول شما: $${balance.toFixed(2)}\n` +
+    "نوع دستگاه را انتخاب کنید:";
+
+  const options = Markup.inlineKeyboard([
+    [
+      Markup.button.callback(
+        "📱 iPhone",
+        "cert:device:iphone"
+      ),
+      Markup.button.callback(
+        "📱 iPad",
+        "cert:device:ipad"
+      )
+    ],
+    [
+      Markup.button.callback(
+        "Certificateهای من",
+        "cert:my"
+      )
+    ],
+    [
+      customEmojiCallback(
+        "برگشت",
+        "menu:home",
+        CUSTOM_EMOJI.back
+      )
+    ]
+  ]);
+
+  return edit && ctx.callbackQuery
+    ? ctx.editMessageText(text, options)
+    : ctx.reply(text, options);
+}
+
+async function showCertificatePlans(ctx, device = "iphone", page = 0, { edit = true } = {}) {
+  try {
+    const safeDevice = String(device).toLowerCase() === "ipad" ? "ipad" : "iphone";
+    const deviceLabel = safeDevice === "ipad" ? "iPad" : "iPhone";
+    const plans = await getCertificatePlans(safeDevice);
+
+    if (!plans.length) {
+      const text =
+        `📜 Certificate ${deviceLabel}\n\nفعلاً هیچ پلن فعالی از API دریافت نشد.`;
+
+      const options = Markup.inlineKeyboard([
+        [Markup.button.callback("Certificateهای من", "cert:my")],
+        [customEmojiCallback("برگشت", "menu:home", CUSTOM_EMOJI.back)]
+      ]);
+
+      return edit && ctx.callbackQuery
+        ? ctx.editMessageText(text, options)
+        : ctx.reply(text, options);
+    }
+
+    const normalizedPlans = plans.map((plan) => ({
+      id: plan.id,
+      plan_name: plan.plan_name,
+      cost: Number(plan.cost),
+      selling_price: certificateSellingPrice(plan.cost, plan.plan_name, safeDevice)
+    }));
+
+    await setSession(
+      ctx.from.id,
+      "certificate_plans",
+      {
+        device: safeDevice,
+        plans: normalizedPlans
+      }
+    );
+
+    const totalPages = Math.max(
+      1,
+      Math.ceil(normalizedPlans.length / CERTIFICATE_PAGE_SIZE)
+    );
+    const safePage = Math.min(
+      Math.max(Number(page) || 0, 0),
+      totalPages - 1
+    );
+    const start = safePage * CERTIFICATE_PAGE_SIZE;
+    const pagePlans = normalizedPlans.slice(
+      start,
+      start + CERTIFICATE_PAGE_SIZE
+    );
+
+    const rows = pagePlans.map((plan, offset) => [
+      Markup.button.callback(
+        `${shortName(plan.plan_name, 30)} | $${Number(plan.selling_price).toFixed(2)}`,
+        `cert:plan:${start + offset}:${safePage}`
+      )
+    ]);
+
+    if (totalPages > 1) {
+      const nav = [];
+      if (safePage > 0) {
+        nav.push(
+          Markup.button.callback(
+            "⬅️ قبلی",
+            `cert:plans:${safeDevice}:${safePage - 1}`
+          )
+        );
+      }
+      if (safePage < totalPages - 1) {
+        nav.push(
+          Markup.button.callback(
+            "بعدی ➡️",
+            `cert:plans:${safeDevice}:${safePage + 1}`
+          )
+        );
+      }
+      rows.push(nav);
+    }
+
+    rows.push([
+      Markup.button.callback(
+        "Certificateهای من",
+        "cert:my"
+      )
+    ]);
+    rows.push([
+      customEmojiCallback(
+        "برگشت",
+        "menu:home",
+        CUSTOM_EMOJI.back
+      )
+    ]);
+
+    const balance = await getUserBalance(ctx.from.id);
+    const text =
+      `📜 Certificate ${deviceLabel}\n\n` +
+      `موجودی کیف پول شما: $${balance.toFixed(2)}\n` +
+      "یکی از پلن‌های زیر را انتخاب کنید:" +
+      (totalPages > 1
+        ? `\nصفحه ${safePage + 1} از ${totalPages}`
+        : "");
+
+    const options = Markup.inlineKeyboard(rows);
+
+    return edit && ctx.callbackQuery
+      ? ctx.editMessageText(text, options)
+      : ctx.reply(text, options);
+  } catch (error) {
+    console.error(
+      "Certificate plans error:",
+      error?.code || "error",
+      error?.message || error
+    );
+
+    const message = certificateApiErrorText(error);
+    return edit && ctx.callbackQuery
+      ? editError(ctx, message, mainMenu())
+      : replyError(ctx, message, mainMenu());
+  }
+}
+
+async function renderCertificateConfirm(ctx, data, { edit = true } = {}) {
+  const balance = await getUserBalance(ctx.from.id);
+  const price = Number(data.selling_price || 0);
+  const shortfall = Math.max(0, Number((price - balance).toFixed(2)));
+
+  const text =
+    `📜 تأیید خرید Certificate\n\n` +
+    `پلن: ${escapeHtml(data.plan_name)}\n` +
+    `UDID: <code>${escapeHtml(data.udid)}</code>\n` +
+    `قیمت: $${price.toFixed(2)}\n` +
+    `موجودی شما: $${balance.toFixed(2)}` +
+    (shortfall > 0
+      ? `\n\n❌ موجودی کافی نیست. $${shortfall.toFixed(2)} کم دارید.`
+      : "\n\nخرید را تأیید می‌کنید؟");
+
+  const rows = [];
+
+  if (shortfall <= 0) {
+    rows.push([
+      Markup.button.callback(
+        "✅ تأیید خرید",
+        "cert:confirm"
+      )
+    ]);
+  } else {
+    rows.push([
+      customEmojiCallback(
+        "شارژ با Heleket",
+        "cert:heleket_topup",
+        CUSTOM_EMOJI.menu.deposit
+      )
+    ]);
+  }
+
+  rows.push([
+    Markup.button.callback("انتخاب پلن / دستگاه دیگر", "menu:certificate")
+  ]);
+  rows.push([
+    customEmojiCallback("لغو", "menu:home", CUSTOM_EMOJI.back)
+  ]);
+
+  const options = htmlText(
+    text,
+    Markup.inlineKeyboard(rows)
+  );
+
+  return edit && ctx.callbackQuery
+    ? ctx.editMessageText(text, options)
+    : ctx.reply(text, options);
+}
+
+async function handleCertificateUdid(ctx, text, session) {
+  const udid = String(text || "").trim();
+
+  if (!/^[A-Za-z0-9-]{20,64}$/.test(udid)) {
+    return replyError(
+      ctx,
+      "فرمت UDID درست نیست. UDID کامل دستگاه را دوباره ارسال کنید."
+    );
+  }
+
+  const plan = session.data?.selected_plan;
+  if (!plan?.id) {
+    await clearSession(ctx.from.id);
+    return replyError(
+      ctx,
+      "پلن انتخاب‌شده پیدا نشد. دوباره از بخش Certificate وارد شوید.",
+      mainMenu()
+    );
+  }
+
+  // Privacy rule: only allow free re-download when this Telegram user
+  // previously purchased the same UDID through this bot.
+  const owned = await query(
+    `SELECT id, certificate_id, udid
+     FROM certificate_orders
+     WHERE telegram_id = $1
+       AND UPPER(udid) = UPPER($2)
+       AND certificate_id IS NOT NULL
+     ORDER BY id DESC
+     LIMIT 1`,
+    [ctx.from.id, udid]
+  );
+
+  if (owned.rowCount) {
+    try {
+      const lookup = await getCertificate({ udid });
+      const certificate = activeCertificateFromResponse(lookup);
+
+      if (certificate) {
+        await clearSession(ctx.from.id);
+
+        const info = certificateInfoText({
+          certificate,
+          certificateId: certificate.id || owned.rows[0].certificate_id,
+          charge: 0,
+          alreadyRegistered: true
+        });
+
+        await ctx.reply(info, { parse_mode: "HTML" });
+        await sendCertificateFiles(
+          ctx,
+          certificate,
+          certificate.id || owned.rows[0].certificate_id
+        );
+        return;
+      }
+    } catch (error) {
+      if (!(error instanceof CertificateApiError) || error.code !== "not_found") {
+        console.error(
+          "Certificate owned lookup error:",
+          error?.code || "error",
+          error?.message || error
+        );
+      }
+    }
+  }
+
+  const balance = await getUserBalance(ctx.from.id);
+  const sellingPrice = Number(plan.selling_price || 0);
+
+  const data = {
+    device: session.data?.device === "ipad" ? "ipad" : "iphone",
+    udid,
+    plan_id: plan.id,
+    plan_name: plan.plan_name,
+    api_cost: Number(plan.cost || 0),
+    selling_price: sellingPrice
+  };
+
+  await setSession(
+    ctx.from.id,
+    "certificate_confirm",
+    data
+  );
+
+  if (balance + 1e-9 < sellingPrice) {
+    return renderCertificateConfirm(ctx, data, { edit: false });
+  }
+
+  return renderCertificateConfirm(ctx, data, { edit: false });
+}
+
+async function saveCertificateOrder(client, {
+  telegramId,
+  certificateId,
+  udid,
+  planId,
+  planName,
+  apiCost,
+  charge,
+  alreadyRegistered,
+  certificate
+}) {
+  let registeredAt = null;
+  if (certificate?.registered_at) {
+    const parsedRegisteredAt = new Date(certificate.registered_at);
+    if (!Number.isNaN(parsedRegisteredAt.getTime())) {
+      registeredAt = parsedRegisteredAt;
+    }
+  }
+
+  return client.query(
+    `INSERT INTO certificate_orders (
+       telegram_id,
+       provider,
+       certificate_id,
+       udid,
+       plan_id,
+       plan_name,
+       api_cost,
+       charge,
+       status,
+       already_registered,
+       provision_valid,
+       expired,
+       pname,
+       registered_at,
+       warranty_remaining_seconds
+     )
+     VALUES (
+       $1,'nekoo',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+     )
+     RETURNING id`,
+    [
+      telegramId,
+      certificateId,
+      udid,
+      planId,
+      planName,
+      Number(apiCost || 0),
+      Number(charge || 0),
+      String(certificate?.status || "signed"),
+      Boolean(alreadyRegistered),
+      certificate?.provision_valid ?? null,
+      certificate?.expired ?? null,
+      certificate?.pname ?? null,
+      registeredAt,
+      Number(certificate?.warranty_remaining_seconds || 0)
+    ]
+  );
+}
+
+async function showMyCertificates(ctx) {
+  const result = await query(
+    `SELECT DISTINCT ON (certificate_id)
+       id,
+       certificate_id,
+       udid,
+       plan_name,
+       status,
+       charge,
+       created_at
+     FROM certificate_orders
+     WHERE telegram_id = $1
+       AND certificate_id IS NOT NULL
+     ORDER BY certificate_id, created_at DESC
+     LIMIT 10`,
+    [ctx.from.id]
+  );
+
+  if (!result.rowCount) {
+    const text =
+      "📜 Certificateهای من\n\nهنوز Certificate ثبت‌شده‌ای در حساب شما نیست.";
+
+    return ctx.editMessageText(
+      text,
+      Markup.inlineKeyboard([
+        [Markup.button.callback("خرید Certificate", "menu:certificate")],
+        [customEmojiCallback("برگشت", "menu:home", CUSTOM_EMOJI.back)]
+      ])
+    );
+  }
+
+  const rows = result.rows.map((row) => [
+    Markup.button.callback(
+      `${shortName(row.plan_name || "Certificate", 22)} | ${String(row.certificate_id).slice(0, 12)}`,
+      `cert:download:${row.id}`
+    )
+  ]);
+
+  rows.push([Markup.button.callback("خرید Certificate جدید", "menu:certificate")]);
+  rows.push([customEmojiCallback("برگشت", "menu:home", CUSTOM_EMOJI.back)]);
+
+  const text =
+    "📜 Certificateهای من\n\nبرای دریافت دوباره فایل‌ها، یکی را انتخاب کنید:";
+
+  return ctx.editMessageText(
+    text,
+    Markup.inlineKeyboard(rows)
+  );
+}
+
+bot.action("menu:certificate", async (ctx) => {
+  await answerCb(ctx);
+  await clearSession(ctx.from.id);
+  await showCertificateDevices(ctx, { edit: true });
+});
+
+bot.action(/^cert:device:(iphone|ipad)$/, async (ctx) => {
+  await answerCb(ctx);
+  await showCertificatePlans(
+    ctx,
+    ctx.match[1],
+    0,
+    { edit: true }
+  );
+});
+
+bot.action(/^cert:plans:(iphone|ipad):(\d+)$/, async (ctx) => {
+  await answerCb(ctx);
+  await showCertificatePlans(
+    ctx,
+    ctx.match[1],
+    Number(ctx.match[2]),
+    { edit: true }
+  );
+});
+
+bot.action(/^cert:plan:(\d+):(\d+)$/, async (ctx) => {
+  await answerCb(ctx);
+
+  const session = await getSession(ctx.from.id);
+  const plans = Array.isArray(session.data?.plans)
+    ? session.data.plans
+    : [];
+  const index = Number(ctx.match[1]);
+  const plan = plans[index];
+
+  if (session.state !== "certificate_plans" || !plan) {
+    return editError(
+      ctx,
+      "لیست پلن‌ها منقضی شده است. دوباره Certificate را باز کنید.",
+      mainMenu()
+    );
+  }
+
+  await setSession(
+    ctx.from.id,
+    "certificate_udid",
+    {
+      device: session.data?.device === "ipad" ? "ipad" : "iphone",
+      selected_plan: plan
+    }
+  );
+
+  const selectedDevice =
+    session.data?.device === "ipad" ? "ipad" : "iphone";
+  const selectedDeviceLabel =
+    selectedDevice === "ipad" ? "iPad" : "iPhone";
+
+  const text =
+    `📜 ${escapeHtml(plan.plan_name)}\n\n` +
+    `قیمت نهایی: $${Number(plan.selling_price).toFixed(2)}\n\n` +
+    `UDID ${selectedDeviceLabel} را ارسال کنید.\n\n` +
+    "برای لغو: /cancel";
+
+  await ctx.editMessageText(
+    text,
+    htmlText(text)
+  );
+});
+
+bot.action("cert:my", async (ctx) => {
+  await answerCb(ctx);
+  await clearSession(ctx.from.id);
+  await showMyCertificates(ctx);
+});
+
+bot.action(/^cert:download:(\d+)$/, async (ctx) => {
+  await answerCb(ctx, "در حال دریافت Certificate...");
+
+  const result = await query(
+    `SELECT id, certificate_id, udid, plan_name
+     FROM certificate_orders
+     WHERE id = $1 AND telegram_id = $2`,
+    [Number(ctx.match[1]), ctx.from.id]
+  );
+
+  if (!result.rowCount) {
+    return editError(ctx, "Certificate پیدا نشد.", mainMenu());
+  }
+
+  const row = result.rows[0];
+
+  try {
+    const response = await getCertificate({
+      certificateId: row.certificate_id
+    });
+    const certificate =
+      activeCertificateFromResponse(response) ||
+      certificateListFromResponse(response)[0];
+
+    if (!certificate) {
+      return editError(
+        ctx,
+        "API اطلاعات Certificate را برنگرداند.",
+        mainMenu()
+      );
+    }
+
+    const text = certificateInfoText({
+      certificate,
+      certificateId: row.certificate_id,
+      charge: 0,
+      alreadyRegistered: true
+    });
+
+    await ctx.editMessageText(
+      text,
+      htmlText(
+        text,
+        Markup.inlineKeyboard([
+          [Markup.button.callback("Certificateهای من", "cert:my")],
+          [customEmojiCallback("خانه", "menu:home", CUSTOM_EMOJI.back)]
+        ])
+      )
+    );
+
+    await sendCertificateFiles(
+      ctx,
+      certificate,
+      row.certificate_id
+    );
+  } catch (error) {
+    console.error(
+      "Certificate re-download error:",
+      error?.code || "error",
+      error?.message || error
+    );
+    await editError(
+      ctx,
+      certificateApiErrorText(error),
+      mainMenu()
+    );
+  }
+});
+
+bot.action("cert:resume", async (ctx) => {
+  await answerCb(ctx);
+  const session = await getSession(ctx.from.id);
+
+  if (session.state !== "certificate_confirm") {
+    return editError(
+      ctx,
+      "اطلاعات خرید Certificate پیدا نشد. دوباره پلن را انتخاب کنید.",
+      mainMenu()
+    );
+  }
+
+  await renderCertificateConfirm(
+    ctx,
+    session.data,
+    { edit: true }
+  );
+});
+
+bot.action("cert:heleket_topup", async (ctx) => {
+  await answerCb(ctx);
+
+  if (!publicBaseUrl()) {
+    return editError(
+      ctx,
+      "دامنه عمومی Railway هنوز ساخته نشده است.",
+      mainMenu()
+    );
+  }
+
+  const session = await getSession(ctx.from.id);
+  if (session.state !== "certificate_confirm") {
+    return editError(
+      ctx,
+      "اطلاعات خرید Certificate پیدا نشد.",
+      mainMenu()
+    );
+  }
+
+  const balance = await getUserBalance(ctx.from.id);
+  const price = Number(session.data?.selling_price || 0);
+  const shortfall = Math.max(0, Number((price - balance).toFixed(2)));
+
+  if (shortfall <= 0) {
+    return renderCertificateConfirm(
+      ctx,
+      session.data,
+      { edit: true }
+    );
+  }
+
+  const amount = Math.max(1, shortfall);
+  const orderId = `dep_${ctx.from.id}_${Date.now()}`;
+
+  try {
+    await query(
+      `INSERT INTO deposits (
+         telegram_id,
+         provider,
+         external_order_id,
+         amount_usd,
+         status
+       )
+       VALUES ($1,'heleket',$2,$3,'creating')`,
+      [ctx.from.id, orderId, amount]
+    );
+
+    const invoice = await createHeleketInvoice({
+      amount,
+      orderId,
+      telegramId: ctx.from.id
+    });
+
+    await query(
+      `UPDATE deposits
+       SET invoice_uuid = $1,
+           status = $2,
+           provider_payload = $3::jsonb,
+           updated_at = NOW()
+       WHERE external_order_id = $4`,
+      [
+        String(invoice.uuid ?? ""),
+        String(invoice.status ?? invoice.payment_status ?? "check"),
+        JSON.stringify(invoice),
+        orderId
+      ]
+    );
+
+    const text =
+      `💳 شارژ کیف پول برای Certificate\n\n` +
+      `مبلغ کمبود: $${shortfall.toFixed(2)}\n` +
+      `فاکتور Heleket: $${amount.toFixed(2)}\n\n` +
+      "پس از تأیید پرداخت، روی «بازگشت به خرید» بزنید.";
+
+    return ctx.editMessageText(
+      text,
+      Markup.inlineKeyboard([
+        [Markup.button.url("پرداخت با Heleket", invoice.url)],
+        [Markup.button.callback("بازگشت به خرید", "cert:resume")],
+        [customEmojiCallback("خانه", "menu:home", CUSTOM_EMOJI.back)]
+      ])
+    );
+  } catch (error) {
+    console.error(
+      "Certificate Heleket topup error:",
+      error?.message || error
+    );
+
+    await query(
+      `UPDATE deposits
+       SET status = 'failed',
+           provider_payload = $1::jsonb,
+           updated_at = NOW()
+       WHERE external_order_id = $2`,
+      [
+        JSON.stringify({ error: String(error?.message || error) }),
+        orderId
+      ]
+    ).catch(() => {});
+
+    return editError(
+      ctx,
+      "ساخت فاکتور Heleket ممکن نشد.",
+      mainMenu()
+    );
+  }
+});
+
+bot.action("cert:confirm", async (ctx) => {
+  await answerCb(ctx, "در حال ثبت Certificate...");
+
+  const session = await getSession(ctx.from.id);
+  if (session.state !== "certificate_confirm") {
+    return editError(
+      ctx,
+      "این خرید منقضی شده است. دوباره پلن را انتخاب کنید.",
+      mainMenu()
+    );
+  }
+
+  const data = session.data;
+
+  try {
+    // Refresh plans right before registration because Nekoo explicitly says
+    // plan IDs may change and should not be hardcoded.
+    const device = data.device === "ipad" ? "ipad" : "iphone";
+    const currentPlans = await getCertificatePlans(device);
+    const currentPlan = currentPlans.find(
+      (plan) => String(plan.id) === String(data.plan_id)
+    );
+
+    if (!currentPlan) {
+      await clearSession(ctx.from.id);
+      return editError(
+        ctx,
+        "این پلن دیگر در API فعال نیست. دوباره از لیست پلن‌ها انتخاب کنید.",
+        mainMenu()
+      );
+    }
+
+    const sellingPrice = certificateSellingPrice(
+      currentPlan.cost,
+      currentPlan.plan_name,
+      device
+    );
+    const profile = await getCertificateProfile();
+
+    if (profile?.api_enabled === false) {
+      return editError(
+        ctx,
+        "خرید Certificate موقتاً در دسترس نیست. با پشتیبانی تماس بگیرید.",
+        mainMenu()
+      );
+    }
+
+    if (Number(profile?.balance ?? 0) + 1e-9 < Number(currentPlan.cost)) {
+      return editError(
+        ctx,
+        "خرید Certificate موقتاً در دسترس نیست. با پشتیبانی تماس بگیرید.",
+        mainMenu()
+      );
+    }
+
+    const client = await pool.connect();
+    let response;
+    let certificate;
+    let charge = sellingPrice;
+    let alreadyRegistered = false;
+
+    try {
+      await client.query("BEGIN");
+
+      const userResult = await client.query(
+        `SELECT balance
+         FROM users
+         WHERE telegram_id = $1
+         FOR UPDATE`,
+        [ctx.from.id]
+      );
+
+      const balance = Number(userResult.rows[0]?.balance ?? 0);
+      if (balance + 1e-9 < sellingPrice) {
+        await client.query("ROLLBACK");
+        await setSession(
+          ctx.from.id,
+          "certificate_confirm",
+          {
+            ...data,
+            api_cost: Number(currentPlan.cost),
+            selling_price: sellingPrice
+          }
+        );
+        return renderCertificateConfirm(
+          ctx,
+          {
+            ...data,
+            api_cost: Number(currentPlan.cost),
+            selling_price: sellingPrice
+          },
+          { edit: true }
+        );
+      }
+
+      response = await registerCertificate({
+        udid: data.udid,
+        plan: currentPlan.id
+      });
+
+      certificate =
+        response?.certificate ||
+        certificateListFromResponse(response)[0] ||
+        null;
+
+      if (!certificate) {
+        throw new CertificateApiError(
+          "Certificate API did not return certificate data",
+          { code: "invalid_response" }
+        );
+      }
+
+      alreadyRegistered =
+        response?.already_registered === true ||
+        Number(response?.cost ?? NaN) === 0;
+
+      if (alreadyRegistered) {
+        // Never expose an already-existing certificate to a different bot user.
+        const ownership = await client.query(
+          `SELECT id
+           FROM certificate_orders
+           WHERE telegram_id = $1
+             AND UPPER(udid) = UPPER($2)
+           LIMIT 1`,
+          [ctx.from.id, data.udid]
+        );
+
+        if (!ownership.rowCount) {
+          await client.query("ROLLBACK");
+          await clearSession(ctx.from.id);
+          return ctx.editMessageText(
+            "این UDID از قبل در سرویس Certificate ثبت شده است. برای حفظ امنیت فایل‌ها، بازیابی خودکار فقط برای خریدهای قبلی همین حساب تلگرام انجام می‌شود. لطفاً با پشتیبانی تماس بگیرید.",
+            mainMenu()
+          );
+        }
+
+        charge = 0;
+      } else {
+        await client.query(
+          `UPDATE users
+           SET balance = balance - $1
+           WHERE telegram_id = $2`,
+          [sellingPrice, ctx.from.id]
+        );
+      }
+
+      const certificateId = String(
+        response?.certificate_id || certificate?.id || ""
+      );
+
+      await saveCertificateOrder(client, {
+        telegramId: ctx.from.id,
+        certificateId,
+        udid: data.udid,
+        planId: currentPlan.id,
+        planName: currentPlan.plan_name,
+        apiCost: Number(response?.cost ?? currentPlan.cost ?? 0),
+        charge,
+        alreadyRegistered,
+        certificate
+      });
+
+      await client.query("COMMIT");
+      await clearSession(ctx.from.id);
+
+      const successText = certificateInfoText({
+        certificate,
+        certificateId,
+        charge,
+        alreadyRegistered
+      });
+
+      await ctx.editMessageText(
+        successText,
+        htmlText(
+          successText,
+          Markup.inlineKeyboard([
+            [Markup.button.callback("Certificateهای من", "cert:my")],
+            [customEmojiCallback("خانه", "menu:home", CUSTOM_EMOJI.back)]
+          ])
+        )
+      );
+
+      await sendCertificateFiles(
+        ctx,
+        certificate,
+        certificateId
+      );
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error(
+      "Certificate confirm error:",
+      error?.code || "error",
+      error?.message || error
+    );
+
+    return editError(
+      ctx,
+      certificateApiErrorText(error),
+      mainMenu()
+    );
+  }
+});
+
 bot.on("text", async (ctx) => {
   const session = await getSession(
     ctx.from.id
@@ -1296,6 +2360,19 @@ bot.on("text", async (ctx) => {
     return replyMenuPlatforms(
       ctx,
       "order"
+    );
+  }
+
+  if (
+    text === "📜 Certificate آیفون / آیپد" ||
+    text === "Certificate آیفون / آیپد" ||
+    text === "📜 Certificate آیفون" ||
+    text === "Certificate آیفون"
+  ) {
+    await clearSession(ctx.from.id);
+    return showCertificateDevices(
+      ctx,
+      { edit: false }
     );
   }
 
@@ -1320,6 +2397,14 @@ bot.on("text", async (ctx) => {
 
   if (text === "پشتیبانی") {
     return replyMenuSupport(ctx);
+  }
+
+  if (session.state === "certificate_udid") {
+    return handleCertificateUdid(
+      ctx,
+      text,
+      session
+    );
   }
 
   if (session.state === "deposit_heleket_amount") {

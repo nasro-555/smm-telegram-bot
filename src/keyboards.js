@@ -158,6 +158,12 @@ export const mainMenu = () =>
     ],
     [
       customEmojiCallback(
+        "📜 Certificate آیفون / آیپد",
+        "menu:certificate"
+      )
+    ],
+    [
+      customEmojiCallback(
         "سفارش‌های من",
         "menu:orders",
         CUSTOM_EMOJI.menu.orders
@@ -227,6 +233,12 @@ export const persistentMenu = () => ({
           text: "لیست محصولات",
           icon_custom_emoji_id: CUSTOM_EMOJI.menu.newOrder,
           style: "success"
+        }
+      ],
+      [
+        {
+          text: "📜 Certificate آیفون / آیپد",
+          style: "primary"
         }
       ],
       [
