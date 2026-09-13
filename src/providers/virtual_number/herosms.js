@@ -72,9 +72,26 @@ function parseErrorPayload(
       ? payload.title || payload.error || payload.status
       : "";
 
+  const validationDetails =
+    payload &&
+    typeof payload === "object" &&
+    payload.errors &&
+    typeof payload.errors === "object"
+      ? Object.entries(payload.errors)
+          .flatMap(([field, messages]) =>
+            (Array.isArray(messages) ? messages : [messages])
+              .filter(Boolean)
+              .map((message) => `${field}: ${message}`)
+          )
+          .join(" | ")
+      : "";
+
   const details =
     payload && typeof payload === "object"
-      ? payload.details || payload.message || ""
+      ? payload.details ||
+        payload.message ||
+        validationDetails ||
+        ""
       : String(payload || "");
 
   return new HeroSmsApiError(
@@ -274,7 +291,7 @@ export function virtualNumberSellingPrice(providerPrice) {
     return 0;
   }
 
-  // Exact business rule: API price + fixed $0.70.
+  // Exact business rule: provider price + $0.70, billed to normal USD cents.
   return Number((price + 0.70).toFixed(2));
 }
 
@@ -480,6 +497,55 @@ export async function getHeroSmsOffers({
   return value;
 }
 
+const POPULAR_SERVICE_RULES = [
+  ["whatsapp"],
+  ["telegram"],
+  ["instagram"],
+  ["facebook"],
+  ["tiktok", "douyin"],
+  ["youtube", "gmail", "google"],
+  ["google voice"],
+  ["snapchat"],
+  ["discord"],
+  ["twitter", " x "],
+  ["linkedin"],
+  ["apple", "icloud"],
+  ["microsoft", "outlook", "hotmail"],
+  ["amazon"],
+  ["uber"],
+  ["airbnb"],
+  ["netflix"],
+  ["spotify"],
+  ["paypal"],
+  ["binance"],
+  ["wechat"],
+  ["line"],
+  ["viber"],
+  ["tinder"],
+  ["bigo"]
+];
+
+function servicePriority(service) {
+  const raw = `${service?.name || ""} ${service?.code || ""}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  for (let index = 0; index < POPULAR_SERVICE_RULES.length; index += 1) {
+    const patterns = POPULAR_SERVICE_RULES[index];
+
+    if (patterns.some((pattern) => {
+      const clean = String(pattern).trim();
+      return clean && raw.includes(clean);
+    })) {
+      return index;
+    }
+  }
+
+  return POPULAR_SERVICE_RULES.length + 100;
+}
+
 export async function getVirtualNumberServices({
   fresh = false
 } = {}) {
@@ -535,14 +601,20 @@ export async function getVirtualNumberServices({
     });
   }
 
-  return result.sort(
-    (a, b) =>
-      a.name.localeCompare(
-        b.name,
-        "en",
-        { sensitivity: "base" }
-      )
-  );
+  return result.sort((a, b) => {
+    const priorityDiff =
+      servicePriority(a) - servicePriority(b);
+
+    if (priorityDiff !== 0) {
+      return priorityDiff;
+    }
+
+    return a.name.localeCompare(
+      b.name,
+      "en",
+      { sensitivity: "base" }
+    );
+  });
 }
 
 export async function getVirtualNumberPackages(
@@ -716,8 +788,9 @@ export async function buyVirtualNumber({
           country:
             Number(countryId),
           amount: 1,
-          fixedPrice:
+          maxPrice:
             Number(providerPrice),
+          fixedPrice: true,
           verificationType: "sms"
         }
       }
