@@ -55,6 +55,7 @@ import {
   getVirtualNumberLastOtp,
   cancelVirtualNumber
 } from "./providers/virtual_number/herosms.js";
+import { lookupCountryMeta } from "./providers/virtual_number/countries.js";
 
 if (!process.env.BOT_TOKEN) {
   throw new Error("BOT_TOKEN is missing");
@@ -936,11 +937,21 @@ function countryFlag(name) {
 }
 
 function countryPlain(name, phoneCode = null) {
-  const code = Number(phoneCode);
-  const suffix = Number.isFinite(code) && code > 0
-    ? ` +${code}`
+  const meta = lookupCountryMeta(name);
+  const rawCode =
+    phoneCode !== null &&
+    phoneCode !== undefined &&
+    phoneCode !== ""
+      ? phoneCode
+      : meta?.dial;
+  const code = String(rawCode || "")
+    .replace(/^\+/, "")
+    .trim();
+  const suffix = /^\d{1,6}$/.test(code)
+    ? ` (+${code})`
     : "";
-  return `${countryFlag(name)} ${String(name || "-")}${suffix}`;
+  const flag = meta?.flag || countryFlag(name);
+  return `${flag} ${String(name || "-")}${suffix}`;
 }
 
 function htmlCountry(name, phoneCode = null) {
@@ -1424,8 +1435,11 @@ async function showVirtualNumberPackages(
         (item, offset) => [
           Markup.button.callback(
             `${shortName(
-              countryPlain(item.countryName),
-              28
+              countryPlain(
+                item.countryName,
+                item.countryPhoneCode
+              ),
+              36
             )} | $${formatVirtualNumberPrice(
               item.sellingPrice
             )}`,
@@ -1546,7 +1560,10 @@ async function renderVirtualNumberChoice(
     const text =
       `${virtualNumberTitle()}\n\n` +
       `سرویس: ${htmlVirtualServiceName(data.service_name)}\n` +
-      `کشور: ${htmlCountry(data.country_name)}\n` +
+      `کشور: ${htmlCountry(
+        data.country_name,
+        data.country_phone_code
+      )}\n` +
       `قیمت: $${formatVirtualNumberPrice(price)}\n` +
       `موجودی شما: $${balance.toFixed(2)}\n` +
       `کسری موجودی: $${formatVirtualNumberPrice(shortfall)}\n\n` +
@@ -1598,7 +1615,10 @@ async function renderVirtualNumberChoice(
   const text =
     `${virtualNumberTitle()}\n\n` +
     `سرویس: ${htmlVirtualServiceName(data.service_name)}\n` +
-    `کشور: ${htmlCountry(data.country_name)}\n` +
+    `کشور: ${htmlCountry(
+        data.country_name,
+        data.country_phone_code
+      )}\n` +
     `قیمت: $${formatVirtualNumberPrice(price)}\n` +
     `موجودی شما: $${balance.toFixed(2)}\n\n` +
     "خرید این شماره را تأیید می‌کنید؟";
@@ -2536,6 +2556,8 @@ bot.action(
         ),
       country_name:
         selected.countryName,
+      country_phone_code:
+        selected.countryPhoneCode || null,
       provider_price:
         Number(
           selected.providerPrice
@@ -2826,7 +2848,11 @@ bot.action("vn:confirm", async (ctx) => {
         ),
       country_name:
         current.countryName ||
-        data.country_name
+        data.country_name,
+      country_phone_code:
+        current.countryPhoneCode ||
+        data.country_phone_code ||
+        null
     };
 
     if (
@@ -2902,12 +2928,13 @@ bot.action("vn:confirm", async (ctx) => {
              service_name,
              country_id,
              country_name,
+             country_phone_code,
              provider_cost,
              charge,
              status
            )
            VALUES (
-             $1,$2,$3,$4,$5,$6,$7,$8,'purchasing'
+             $1,$2,$3,$4,$5,$6,$7,$8,$9,'purchasing'
            )
            ON CONFLICT (request_token)
            DO NOTHING
@@ -2934,6 +2961,10 @@ bot.action("vn:confirm", async (ctx) => {
               currentData
                 .country_name || ""
             ),
+            Number(
+              currentData
+                .country_phone_code || 0
+            ) || null,
             Number(
               currentData
                 .provider_price
