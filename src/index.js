@@ -56,6 +56,7 @@ import {
   cancelVirtualNumber
 } from "./providers/virtual_number/herosms.js";
 import { lookupCountryMeta } from "./providers/virtual_number/countries.js";
+import { sortCountriesByCustomers } from "./providers/virtual_number/popularity.js";
 
 if (!process.env.BOT_TOKEN) {
   throw new Error("BOT_TOKEN is missing");
@@ -1383,8 +1384,22 @@ async function showVirtualNumberPackages(
           );
     }
 
+    // Count distinct paying customers for this app; failed/refunded purchases
+    // must not increase a country's popularity. Sort before pagination/session.
+    const popularity = await query(
+      `SELECT country_id, COUNT(DISTINCT telegram_id)::int AS customers
+       FROM virtual_number_orders
+       WHERE service_code = $1
+         AND activation_id IS NOT NULL
+         AND charge > 0
+         AND refunded = FALSE
+         AND status NOT IN ('pending', 'failed', 'cancelled')
+       GROUP BY country_id`,
+      [service.code]
+    );
+
     const enriched =
-      packages.map(
+      sortCountriesByCustomers(packages, popularity.rows).map(
         (item) => ({
           ...item,
           serviceName:
@@ -1530,6 +1545,13 @@ async function renderVirtualNumberChoice(
   data,
   { edit = true } = {}
 ) {
+  const available = Number(data.available);
+  const stockText = data.available !== null && data.available !== undefined &&
+    Number.isFinite(available) && available >= 0
+    ? `${Math.floor(available).toLocaleString("fa-IR")} عدد`
+    : "نامشخص";
+  const stockLine = `موجودی شماره ${escapeHtml(data.country_name || "کشور انتخاب‌شده")}: ${stockText}`;
+
   const balance =
     await getUserBalance(
       ctx.from.id
@@ -1566,6 +1588,7 @@ async function renderVirtualNumberChoice(
       )}\n` +
       `قیمت: $${formatVirtualNumberPrice(price)}\n` +
       `موجودی شما: $${balance.toFixed(2)}\n` +
+      `${stockLine}\n` +
       `کسری موجودی: $${formatVirtualNumberPrice(shortfall)}\n\n` +
       "برای ادامه ابتدا موجودی کیف پول را افزایش دهید.";
 
@@ -1620,7 +1643,8 @@ async function renderVirtualNumberChoice(
         data.country_phone_code
       )}\n` +
     `قیمت: $${formatVirtualNumberPrice(price)}\n` +
-    `موجودی شما: $${balance.toFixed(2)}\n\n` +
+    `موجودی شما: $${balance.toFixed(2)}\n` +
+    `${stockLine}\n\n` +
     "خرید این شماره را تأیید می‌کنید؟";
 
   const options = htmlText(
@@ -2558,6 +2582,7 @@ bot.action(
         selected.countryName,
       country_phone_code:
         selected.countryPhoneCode || null,
+      available: selected.available,
       provider_price:
         Number(
           selected.providerPrice
@@ -2838,6 +2863,7 @@ bot.action("vn:confirm", async (ctx) => {
 
     const currentData = {
       ...data,
+      available: current.available,
       provider_price:
         Number(
           current.providerPrice
