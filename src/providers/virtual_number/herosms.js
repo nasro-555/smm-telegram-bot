@@ -2226,6 +2226,14 @@ export async function buyVirtualNumber({
   countryId,
   providerPrice
 }) {
+  const maxPrice = Number(providerPrice);
+  if (!Number.isFinite(maxPrice) || maxPrice <= 0) {
+    throw new HeroSmsApiError(
+      "Invalid provider price",
+      { code: "WRONG_MAX_PRICE" }
+    );
+  }
+
   const payload =
     await requestRest(
       "/activations",
@@ -2237,8 +2245,8 @@ export async function buyVirtualNumber({
           country:
             Number(countryId),
           amount: 1,
-          fixedPrice:
-            Number(providerPrice),
+          fixedPrice: true,
+          maxPrice,
           verificationType: "sms"
         }
       }
