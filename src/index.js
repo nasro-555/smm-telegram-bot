@@ -45,6 +45,15 @@ import {
   getCertificate,
   certificateSellingPrice
 } from "./providers/certificate/nekoo.js";
+import {
+  HeroSmsApiError,
+  getVirtualNumberServices,
+  getVirtualNumberPackages,
+  getVirtualNumberPackage,
+  buyVirtualNumber,
+  getVirtualNumberLastOtp,
+  cancelVirtualNumber
+} from "./providers/virtual_number/herosms.js";
 
 if (!process.env.BOT_TOKEN) {
   throw new Error("BOT_TOKEN is missing");
@@ -807,6 +816,717 @@ async function providerService(
   }
 }
 
+
+const VIRTUAL_NUMBER_PAGE_SIZE = 10;
+
+function virtualNumberTitle(
+  label = "شماره مجازی"
+) {
+  return (
+    `${tgEmoji(
+      CUSTOM_EMOJI.menu.virtualNumber,
+      "📱"
+    )} ${escapeHtml(label)}`
+  );
+}
+
+function formatVirtualNumberPrice(value) {
+  const number = Number(value || 0);
+
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+
+  const decimals =
+    number < 1 ? 4 : 2;
+
+  return number
+    .toFixed(decimals)
+    .replace(/0+$/, "")
+    .replace(/\.$/, "");
+}
+
+function virtualNumberApiErrorText(error) {
+  const code =
+    String(
+      error?.code ||
+      error?.message ||
+      ""
+    ).toUpperCase();
+
+  if (
+    code.includes("NO_BALANCE") ||
+    error?.status === 402
+  ) {
+    return (
+      "سرویس‌دهنده فعلاً موجودی کافی ندارد. " +
+      "مبلغی از کیف پول شما کم نشده است."
+    );
+  }
+
+  if (
+    code.includes("NO_NUMBERS") ||
+    code.includes("OFFER_NOT_FOUND") ||
+    error?.status === 404
+  ) {
+    return (
+      "این بسته فعلاً شماره موجود ندارد. " +
+      "یک کشور یا سرویس دیگر را انتخاب کنید."
+    );
+  }
+
+  if (
+    code.includes("RATE_LIMIT") ||
+    error?.status === 429
+  ) {
+    return (
+      "درخواست‌ها موقتاً زیاد شده است. " +
+      "کمی بعد دوباره امتحان کنید."
+    );
+  }
+
+  if (
+    code.includes("UNAUTH") ||
+    code.includes("CONFIG_ERROR") ||
+    error?.status === 401
+  ) {
+    return (
+      "اتصال به سرویس شماره‌ها تنظیم نیست. " +
+      "لطفاً با پشتیبانی تماس بگیرید."
+    );
+  }
+
+  if (
+    code.includes("TIMEOUT") ||
+    code.includes("NETWORK") ||
+    error?.status >= 500
+  ) {
+    return (
+      "سرویس شماره‌ها موقتاً در دسترس نیست. " +
+      "کمی بعد دوباره امتحان کنید."
+    );
+  }
+
+  return (
+    "انجام درخواست ممکن نشد. " +
+    "کمی بعد دوباره امتحان کنید."
+  );
+}
+
+async function showVirtualNumberServices(
+  ctx,
+  page = 0,
+  { edit = true } = {}
+) {
+  try {
+    const services =
+      await getVirtualNumberServices();
+
+    if (!services.length) {
+      const text =
+        `${virtualNumberTitle()}\n\n` +
+        "فعلاً هیچ سرویس فعالی از API دریافت نشد.";
+
+      const options = htmlText(
+        text,
+        Markup.inlineKeyboard([
+          [
+            customEmojiCallback(
+              "برگشت",
+              "menu:home",
+              CUSTOM_EMOJI.back
+            )
+          ]
+        ])
+      );
+
+      return edit && ctx.callbackQuery
+        ? ctx.editMessageText(
+            text,
+            options
+          )
+        : ctx.reply(
+            text,
+            options
+          );
+    }
+
+    await setSession(
+      ctx.from.id,
+      "vn_services",
+      { services }
+    );
+
+    const totalPages =
+      Math.max(
+        1,
+        Math.ceil(
+          services.length /
+          VIRTUAL_NUMBER_PAGE_SIZE
+        )
+      );
+
+    const safePage =
+      Math.min(
+        Math.max(
+          Number(page) || 0,
+          0
+        ),
+        totalPages - 1
+      );
+
+    const start =
+      safePage *
+      VIRTUAL_NUMBER_PAGE_SIZE;
+
+    const pageServices =
+      services.slice(
+        start,
+        start +
+        VIRTUAL_NUMBER_PAGE_SIZE
+      );
+
+    const rows =
+      pageServices.map(
+        (service, offset) => [
+          Markup.button.callback(
+            `${shortName(
+              service.name,
+              34
+            )} (${service.packageCount})`,
+            `vn:s:${start + offset}:${safePage}`
+          )
+        ]
+      );
+
+    if (totalPages > 1) {
+      const nav = [];
+
+      if (safePage > 0) {
+        nav.push(
+          Markup.button.callback(
+            "⬅️ قبلی",
+            `vn:sp:${safePage - 1}`
+          )
+        );
+      }
+
+      if (
+        safePage <
+        totalPages - 1
+      ) {
+        nav.push(
+          Markup.button.callback(
+            "بعدی ➡️",
+            `vn:sp:${safePage + 1}`
+          )
+        );
+      }
+
+      if (nav.length) {
+        rows.push(nav);
+      }
+    }
+
+    rows.push([
+      customEmojiCallback(
+        "برگشت",
+        "menu:home",
+        CUSTOM_EMOJI.back
+      )
+    ]);
+
+    const balance =
+      await getUserBalance(
+        ctx.from.id
+      );
+
+    const text =
+      `${virtualNumberTitle()}\n\n` +
+      `موجودی کیف پول شما: $${balance.toFixed(2)}\n` +
+      "سرویس موردنظر را انتخاب کنید:" +
+      (
+        totalPages > 1
+          ? `\nصفحه ${safePage + 1} از ${totalPages}`
+          : ""
+      );
+
+    const options = htmlText(
+      text,
+      Markup.inlineKeyboard(rows)
+    );
+
+    return edit && ctx.callbackQuery
+      ? ctx.editMessageText(
+          text,
+          options
+        )
+      : ctx.reply(
+          text,
+          options
+        );
+  } catch (error) {
+    console.error(
+      "HeroSMS services error:",
+      error?.code || "error",
+      error?.message || error
+    );
+
+    const message =
+      virtualNumberApiErrorText(
+        error
+      );
+
+    return edit && ctx.callbackQuery
+      ? editError(
+          ctx,
+          message,
+          mainMenu()
+        )
+      : replyError(
+          ctx,
+          message,
+          mainMenu()
+        );
+  }
+}
+
+async function showVirtualNumberPackages(
+  ctx,
+  service,
+  page = 0,
+  { edit = true } = {}
+) {
+  try {
+    const packages =
+      await getVirtualNumberPackages(
+        service.code
+      );
+
+    if (!packages.length) {
+      const text =
+        `${virtualNumberTitle()}\n\n` +
+        `${escapeHtml(service.name)}\n\n` +
+        "فعلاً هیچ کشور دارای شماره برای این سرویس نیست.";
+
+      const options = htmlText(
+        text,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback(
+              "برگشت به سرویس‌ها",
+              "vn:services"
+            )
+          ]
+        ])
+      );
+
+      return edit && ctx.callbackQuery
+        ? ctx.editMessageText(
+            text,
+            options
+          )
+        : ctx.reply(
+            text,
+            options
+          );
+    }
+
+    const enriched =
+      packages.map(
+        (item) => ({
+          ...item,
+          serviceName:
+            service.name
+        })
+      );
+
+    await setSession(
+      ctx.from.id,
+      "vn_packages",
+      {
+        service,
+        packages: enriched
+      }
+    );
+
+    const totalPages =
+      Math.max(
+        1,
+        Math.ceil(
+          enriched.length /
+          VIRTUAL_NUMBER_PAGE_SIZE
+        )
+      );
+
+    const safePage =
+      Math.min(
+        Math.max(
+          Number(page) || 0,
+          0
+        ),
+        totalPages - 1
+      );
+
+    const start =
+      safePage *
+      VIRTUAL_NUMBER_PAGE_SIZE;
+
+    const pagePackages =
+      enriched.slice(
+        start,
+        start +
+        VIRTUAL_NUMBER_PAGE_SIZE
+      );
+
+    const rows =
+      pagePackages.map(
+        (item, offset) => [
+          Markup.button.callback(
+            `${shortName(
+              item.countryName,
+              28
+            )} | $${formatVirtualNumberPrice(
+              item.sellingPrice
+            )}`,
+            `vn:p:${start + offset}:${safePage}`
+          )
+        ]
+      );
+
+    if (totalPages > 1) {
+      const nav = [];
+
+      if (safePage > 0) {
+        nav.push(
+          Markup.button.callback(
+            "⬅️ قبلی",
+            `vn:pp:${safePage - 1}`
+          )
+        );
+      }
+
+      if (
+        safePage <
+        totalPages - 1
+      ) {
+        nav.push(
+          Markup.button.callback(
+            "بعدی ➡️",
+            `vn:pp:${safePage + 1}`
+          )
+        );
+      }
+
+      if (nav.length) {
+        rows.push(nav);
+      }
+    }
+
+    rows.push([
+      Markup.button.callback(
+        "برگشت به سرویس‌ها",
+        "vn:services"
+      )
+    ]);
+
+    const text =
+      `${virtualNumberTitle()}\n\n` +
+      `سرویس: ${escapeHtml(service.name)}\n` +
+      "کشور و بسته موردنظر را انتخاب کنید.\n" +
+      "قیمت‌های زیر به‌صورت زنده از API محاسبه شده‌اند." +
+      (
+        totalPages > 1
+          ? `\nصفحه ${safePage + 1} از ${totalPages}`
+          : ""
+      );
+
+    const options = htmlText(
+      text,
+      Markup.inlineKeyboard(rows)
+    );
+
+    return edit && ctx.callbackQuery
+      ? ctx.editMessageText(
+          text,
+          options
+        )
+      : ctx.reply(
+          text,
+          options
+        );
+  } catch (error) {
+    console.error(
+      "HeroSMS packages error:",
+      error?.code || "error",
+      error?.message || error
+    );
+
+    return editError(
+      ctx,
+      virtualNumberApiErrorText(
+        error
+      ),
+      mainMenu()
+    );
+  }
+}
+
+async function renderVirtualNumberChoice(
+  ctx,
+  data,
+  { edit = true } = {}
+) {
+  const balance =
+    await getUserBalance(
+      ctx.from.id
+    );
+
+  const price =
+    Number(
+      data?.selling_price || 0
+    );
+
+  const shortfall =
+    Math.max(
+      0,
+      Number(
+        (
+          price - balance
+        ).toFixed(4)
+      )
+    );
+
+  if (shortfall > 0) {
+    await setSession(
+      ctx.from.id,
+      "vn_precheck",
+      data
+    );
+
+    const text =
+      `${virtualNumberTitle()}\n\n` +
+      `سرویس: ${escapeHtml(data.service_name)}\n` +
+      `کشور: ${escapeHtml(data.country_name)}\n` +
+      `قیمت: $${formatVirtualNumberPrice(price)}\n` +
+      `موجودی شما: $${balance.toFixed(2)}\n` +
+      `کسری موجودی: $${formatVirtualNumberPrice(shortfall)}\n\n` +
+      "برای ادامه ابتدا موجودی کیف پول را افزایش دهید.";
+
+    const options = htmlText(
+      text,
+      Markup.inlineKeyboard([
+        [
+          customEmojiCallback(
+            "افزایش موجودی با کریپتو و تتر",
+            "vn:topup",
+            CUSTOM_EMOJI.menu.deposit
+          )
+        ],
+        [
+          Markup.button.callback(
+            "انتخاب بسته دیگر",
+            "vn:services"
+          )
+        ],
+        [
+          customEmojiCallback(
+            "خانه",
+            "menu:home",
+            CUSTOM_EMOJI.back
+          )
+        ]
+      ])
+    );
+
+    return edit && ctx.callbackQuery
+      ? ctx.editMessageText(
+          text,
+          options
+        )
+      : ctx.reply(
+          text,
+          options
+        );
+  }
+
+  await setSession(
+    ctx.from.id,
+    "vn_confirm",
+    data
+  );
+
+  const text =
+    `${virtualNumberTitle()}\n\n` +
+    `سرویس: ${escapeHtml(data.service_name)}\n` +
+    `کشور: ${escapeHtml(data.country_name)}\n` +
+    `قیمت: $${formatVirtualNumberPrice(price)}\n` +
+    `موجودی شما: $${balance.toFixed(2)}\n\n` +
+    "خرید این شماره را تأیید می‌کنید؟";
+
+  const options = htmlText(
+    text,
+    Markup.inlineKeyboard([
+      [
+        Markup.button.callback(
+          "✅ خرید شماره",
+          "vn:confirm"
+        )
+      ],
+      [
+        Markup.button.callback(
+          "انتخاب بسته دیگر",
+          "vn:services"
+        )
+      ],
+      [
+        customEmojiCallback(
+          "لغو",
+          "menu:home",
+          CUSTOM_EMOJI.back
+        )
+      ]
+    ])
+  );
+
+  return edit && ctx.callbackQuery
+    ? ctx.editMessageText(
+        text,
+        options
+      )
+    : ctx.reply(
+        text,
+        options
+      );
+}
+
+async function virtualNumberOrderText(
+  order
+) {
+  const status =
+    String(
+      order?.status ||
+      "active"
+    );
+
+  return (
+    `${virtualNumberTitle()}\n\n` +
+    `سرویس: ${escapeHtml(
+      order?.service_name ||
+      order?.service_code ||
+      "-"
+    )}\n` +
+    `کشور: ${escapeHtml(
+      order?.country_name ||
+      "-"
+    )}\n` +
+    `شماره: <code>${escapeHtml(
+      order?.phone_number ||
+      "-"
+    )}</code>\n` +
+    `قیمت: $${formatVirtualNumberPrice(
+      order?.charge || 0
+    )}\n` +
+    `وضعیت: ${escapeHtml(status)}`
+  );
+}
+
+function virtualNumberOrderKeyboard(
+  orderId
+) {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback(
+        "دریافت کد SMS",
+        `vn:otp:${orderId}`
+      )
+    ],
+    [
+      Markup.button.callback(
+        "لغو شماره",
+        `vn:cancel:${orderId}`
+      )
+    ],
+    [
+      customEmojiCallback(
+        "خانه",
+        "menu:home",
+        CUSTOM_EMOJI.back
+      )
+    ]
+  ]);
+}
+
+async function refundVirtualNumberOrder(
+  orderId,
+  errorPayload = null
+) {
+  const client =
+    await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const result =
+      await client.query(
+        `SELECT *
+         FROM virtual_number_orders
+         WHERE id = $1
+         FOR UPDATE`,
+        [orderId]
+      );
+
+    if (!result.rowCount) {
+      await client.query("ROLLBACK");
+      return;
+    }
+
+    const order =
+      result.rows[0];
+
+    if (!order.refunded) {
+      await client.query(
+        `UPDATE users
+         SET balance = balance + $1
+         WHERE telegram_id = $2`,
+        [
+          Number(order.charge || 0),
+          order.telegram_id
+        ]
+      );
+    }
+
+    await client.query(
+      `UPDATE virtual_number_orders
+       SET status = 'failed',
+           refunded = TRUE,
+           refunded_at = COALESCE(refunded_at, NOW()),
+           provider_payload = COALESCE($1::jsonb, provider_payload),
+           updated_at = NOW()
+       WHERE id = $2`,
+      [
+        errorPayload
+          ? JSON.stringify(
+              errorPayload
+            )
+          : null,
+        orderId
+      ]
+    );
+
+    await client.query("COMMIT");
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
 bot.use(async (ctx, next) => {
   if (ctx.from) {
     await ensureUser(ctx.from);
@@ -831,6 +1551,1020 @@ bot.action("menu:prices", async (ctx) => {
   await answerCb(ctx);
   await platforms(ctx, "price");
 });
+
+bot.action("menu:virtual_number", async (ctx) => {
+  await answerCb(ctx);
+  await clearSession(ctx.from.id);
+
+  return showVirtualNumberServices(
+    ctx,
+    0,
+    { edit: true }
+  );
+});
+
+bot.action("vn:services", async (ctx) => {
+  await answerCb(ctx);
+
+  return showVirtualNumberServices(
+    ctx,
+    0,
+    { edit: true }
+  );
+});
+
+bot.action(/^vn:sp:(\d+)$/, async (ctx) => {
+  await answerCb(ctx);
+
+  return showVirtualNumberServices(
+    ctx,
+    Number(ctx.match[1]),
+    { edit: true }
+  );
+});
+
+bot.action(
+  /^vn:s:(\d+):(\d+)$/,
+  async (ctx) => {
+    await answerCb(ctx);
+
+    const session =
+      await getSession(
+        ctx.from.id
+      );
+
+    const services =
+      Array.isArray(
+        session.data?.services
+      )
+        ? session.data.services
+        : [];
+
+    const service =
+      services[
+        Number(ctx.match[1])
+      ];
+
+    if (
+      session.state !==
+        "vn_services" ||
+      !service
+    ) {
+      return editError(
+        ctx,
+        "لیست سرویس‌ها منقضی شده است. دوباره این بخش را باز کنید.",
+        mainMenu()
+      );
+    }
+
+    return showVirtualNumberPackages(
+      ctx,
+      service,
+      0,
+      { edit: true }
+    );
+  }
+);
+
+bot.action(
+  /^vn:pp:(\d+)$/,
+  async (ctx) => {
+    await answerCb(ctx);
+
+    const session =
+      await getSession(
+        ctx.from.id
+      );
+
+    if (
+      session.state !==
+        "vn_packages" ||
+      !session.data?.service
+    ) {
+      return editError(
+        ctx,
+        "لیست بسته‌ها منقضی شده است.",
+        mainMenu()
+      );
+    }
+
+    return showVirtualNumberPackages(
+      ctx,
+      session.data.service,
+      Number(ctx.match[1]),
+      { edit: true }
+    );
+  }
+);
+
+bot.action(
+  /^vn:p:(\d+):(\d+)$/,
+  async (ctx) => {
+    await answerCb(ctx);
+
+    const session =
+      await getSession(
+        ctx.from.id
+      );
+
+    const packages =
+      Array.isArray(
+        session.data?.packages
+      )
+        ? session.data.packages
+        : [];
+
+    const selected =
+      packages[
+        Number(ctx.match[1])
+      ];
+
+    if (
+      session.state !==
+        "vn_packages" ||
+      !selected
+    ) {
+      return editError(
+        ctx,
+        "این بسته منقضی شده است. دوباره انتخاب کنید.",
+        mainMenu()
+      );
+    }
+
+    const data = {
+      service_code:
+        selected.serviceCode,
+      service_name:
+        selected.serviceName,
+      country_id:
+        Number(
+          selected.countryId
+        ),
+      country_name:
+        selected.countryName,
+      provider_price:
+        Number(
+          selected.providerPrice
+        ),
+      selling_price:
+        Number(
+          selected.sellingPrice
+        ),
+      request_token:
+        `vn_${ctx.from.id}_${Date.now()}_${selected.serviceCode}_${selected.countryId}`
+    };
+
+    return renderVirtualNumberChoice(
+      ctx,
+      data,
+      { edit: true }
+    );
+  }
+);
+
+bot.action("vn:resume", async (ctx) => {
+  await answerCb(ctx);
+
+  const session =
+    await getSession(
+      ctx.from.id
+    );
+
+  if (
+    session.state !==
+      "vn_precheck" &&
+    session.state !==
+      "vn_confirm"
+  ) {
+    return editError(
+      ctx,
+      "اطلاعات خرید پیدا نشد. دوباره بسته را انتخاب کنید.",
+      mainMenu()
+    );
+  }
+
+  return renderVirtualNumberChoice(
+    ctx,
+    session.data,
+    { edit: true }
+  );
+});
+
+bot.action("vn:topup", async (ctx) => {
+  await answerCb(ctx);
+
+  if (!publicBaseUrl()) {
+    return editError(
+      ctx,
+      "دامنه عمومی Railway هنوز ساخته نشده است.",
+      mainMenu()
+    );
+  }
+
+  const session =
+    await getSession(
+      ctx.from.id
+    );
+
+  if (
+    session.state !==
+      "vn_precheck"
+  ) {
+    return editError(
+      ctx,
+      "اطلاعات بسته پیدا نشد.",
+      mainMenu()
+    );
+  }
+
+  const balance =
+    await getUserBalance(
+      ctx.from.id
+    );
+
+  const price =
+    Number(
+      session.data
+        ?.selling_price || 0
+    );
+
+  const shortfall =
+    Math.max(
+      0,
+      Number(
+        (
+          price - balance
+        ).toFixed(4)
+      )
+    );
+
+  if (shortfall <= 0) {
+    return renderVirtualNumberChoice(
+      ctx,
+      session.data,
+      { edit: true }
+    );
+  }
+
+  const amount =
+    Math.max(1, shortfall);
+
+  const orderId =
+    `dep_${ctx.from.id}_${Date.now()}`;
+
+  try {
+    await query(
+      `INSERT INTO deposits (
+         telegram_id,
+         provider,
+         external_order_id,
+         amount_usd,
+         status
+       )
+       VALUES (
+         $1,
+         'heleket',
+         $2,
+         $3,
+         'creating'
+       )`,
+      [
+        ctx.from.id,
+        orderId,
+        amount
+      ]
+    );
+
+    const invoice =
+      await createHeleketInvoice({
+        amount,
+        orderId,
+        telegramId:
+          ctx.from.id
+      });
+
+    await query(
+      `UPDATE deposits
+       SET invoice_uuid = $1,
+           status = $2,
+           provider_payload = $3::jsonb,
+           updated_at = NOW()
+       WHERE external_order_id = $4`,
+      [
+        String(
+          invoice.uuid ?? ""
+        ),
+        String(
+          invoice.status ??
+          invoice.payment_status ??
+          "check"
+        ),
+        JSON.stringify(invoice),
+        orderId
+      ]
+    );
+
+    const text =
+      `${virtualNumberTitle()}\n\n` +
+      `کسری موجودی: $${formatVirtualNumberPrice(shortfall)}\n` +
+      `فاکتور: $${amount.toFixed(2)}\n\n` +
+      "پس از تأیید پرداخت، روی «بازگشت به خرید» بزنید.";
+
+    return ctx.editMessageText(
+      text,
+      htmlText(
+        text,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.url(
+              "پرداخت با کریپتو و تتر",
+              invoice.url
+            )
+          ],
+          [
+            Markup.button.callback(
+              "بازگشت به خرید",
+              "vn:resume"
+            )
+          ],
+          [
+            customEmojiCallback(
+              "خانه",
+              "menu:home",
+              CUSTOM_EMOJI.back
+            )
+          ]
+        ])
+      )
+    );
+  } catch (error) {
+    console.error(
+      "Virtual number topup error:",
+      error?.message || error
+    );
+
+    await query(
+      `UPDATE deposits
+       SET status = 'failed',
+           provider_payload = $1::jsonb,
+           updated_at = NOW()
+       WHERE external_order_id = $2`,
+      [
+        JSON.stringify({
+          error: String(
+            error?.message ||
+            error
+          )
+        }),
+        orderId
+      ]
+    ).catch(() => {});
+
+    return editError(
+      ctx,
+      "ساخت فاکتور پرداخت ممکن نشد.",
+      mainMenu()
+    );
+  }
+});
+
+bot.action("vn:confirm", async (ctx) => {
+  await answerCb(
+    ctx,
+    "در حال خرید شماره..."
+  );
+
+  const claimed =
+    await query(
+      `UPDATE user_sessions
+       SET state = 'vn_purchasing',
+           updated_at = NOW()
+       WHERE telegram_id = $1
+         AND state = 'vn_confirm'
+       RETURNING data`,
+      [ctx.from.id]
+    );
+
+  if (!claimed.rowCount) {
+    return editError(
+      ctx,
+      "این خرید قبلاً پردازش شده یا منقضی شده است.",
+      mainMenu()
+    );
+  }
+
+  const data =
+    claimed.rows[0].data || {};
+
+  let orderRow = null;
+
+  try {
+    const current =
+      await getVirtualNumberPackage(
+        data.service_code,
+        data.country_id,
+        { fresh: true }
+      );
+
+    if (!current) {
+      await setSession(
+        ctx.from.id,
+        "vn_precheck",
+        data
+      );
+
+      return editError(
+        ctx,
+        "این بسته همین حالا ناموجود شد. مبلغی از کیف پول کم نشده است.",
+        mainMenu()
+      );
+    }
+
+    const currentData = {
+      ...data,
+      provider_price:
+        Number(
+          current.providerPrice
+        ),
+      selling_price:
+        Number(
+          current.sellingPrice
+        ),
+      country_name:
+        current.countryName ||
+        data.country_name
+    };
+
+    if (
+      Math.abs(
+        Number(
+          currentData.selling_price
+        ) -
+        Number(
+          data.selling_price
+        )
+      ) > 0.00005
+    ) {
+      currentData.request_token =
+        `vn_${ctx.from.id}_${Date.now()}_${data.service_code}_${data.country_id}`;
+
+      await setSession(
+        ctx.from.id,
+        "vn_confirm",
+        currentData
+      );
+
+      return renderVirtualNumberChoice(
+        ctx,
+        currentData,
+        { edit: true }
+      );
+    }
+
+    const client =
+      await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      const debit =
+        await client.query(
+          `UPDATE users
+           SET balance = balance - $1
+           WHERE telegram_id = $2
+             AND balance >= $1
+           RETURNING balance`,
+          [
+            Number(
+              currentData
+                .selling_price
+            ),
+            ctx.from.id
+          ]
+        );
+
+      if (!debit.rowCount) {
+        await client.query("ROLLBACK");
+
+        await setSession(
+          ctx.from.id,
+          "vn_precheck",
+          currentData
+        );
+
+        return renderVirtualNumberChoice(
+          ctx,
+          currentData,
+          { edit: true }
+        );
+      }
+
+      const inserted =
+        await client.query(
+          `INSERT INTO virtual_number_orders (
+             telegram_id,
+             request_token,
+             service_code,
+             service_name,
+             country_id,
+             country_name,
+             provider_cost,
+             charge,
+             status
+           )
+           VALUES (
+             $1,$2,$3,$4,$5,$6,$7,$8,'purchasing'
+           )
+           ON CONFLICT (request_token)
+           DO NOTHING
+           RETURNING *`,
+          [
+            ctx.from.id,
+            String(
+              currentData
+                .request_token
+            ),
+            String(
+              currentData
+                .service_code
+            ),
+            String(
+              currentData
+                .service_name || ""
+            ),
+            Number(
+              currentData
+                .country_id
+            ),
+            String(
+              currentData
+                .country_name || ""
+            ),
+            Number(
+              currentData
+                .provider_price
+            ),
+            Number(
+              currentData
+                .selling_price
+            )
+          ]
+        );
+
+      if (!inserted.rowCount) {
+        await client.query(
+          `UPDATE users
+           SET balance = balance + $1
+           WHERE telegram_id = $2`,
+          [
+            Number(
+              currentData
+                .selling_price
+            ),
+            ctx.from.id
+          ]
+        );
+
+        await client.query("COMMIT");
+
+        return editError(
+          ctx,
+          "این خرید قبلاً ثبت شده است.",
+          mainMenu()
+        );
+      }
+
+      orderRow =
+        inserted.rows[0];
+
+      await client.query("COMMIT");
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    let activation;
+
+    try {
+      activation =
+        await buyVirtualNumber({
+          serviceCode:
+            currentData.service_code,
+          countryId:
+            currentData.country_id,
+          providerPrice:
+            currentData.provider_price
+        });
+    } catch (error) {
+      await refundVirtualNumberOrder(
+        orderRow.id,
+        {
+          code:
+            error?.code ||
+            "provider_error",
+          message:
+            error?.message ||
+            String(error)
+        }
+      );
+
+      await setSession(
+        ctx.from.id,
+        "vn_confirm",
+        currentData
+      );
+
+      return editError(
+        ctx,
+        virtualNumberApiErrorText(
+          error
+        ),
+        mainMenu()
+      );
+    }
+
+    const activationId =
+      String(
+        activation.id ||
+        activation.activationId ||
+        ""
+      );
+
+    const phone =
+      String(
+        activation.phone ||
+        activation.phoneNumber ||
+        ""
+      );
+
+    const providerCost =
+      Number(
+        activation.price ??
+        activation.activationCost ??
+        currentData.provider_price
+      );
+
+    const updated =
+      await query(
+        `UPDATE virtual_number_orders
+         SET activation_id = $1,
+             phone_number = $2,
+             provider_cost = $3,
+             currency = $4,
+             status = 'active',
+             provider_payload = $5::jsonb,
+             updated_at = NOW()
+         WHERE id = $6
+         RETURNING *`,
+        [
+          activationId,
+          phone,
+          providerCost,
+          Number(
+            activation.currency || 840
+          ),
+          JSON.stringify(
+            activation
+          ),
+          orderRow.id
+        ]
+      );
+
+    await clearSession(
+      ctx.from.id
+    );
+
+    const order =
+      updated.rows[0] || {
+        ...orderRow,
+        activation_id:
+          activationId,
+        phone_number: phone,
+        provider_cost:
+          providerCost,
+        status: "active"
+      };
+
+    const text =
+      await virtualNumberOrderText(
+        order
+      );
+
+    return ctx.editMessageText(
+      text,
+      htmlText(
+        text,
+        virtualNumberOrderKeyboard(
+          order.id
+        )
+      )
+    );
+  } catch (error) {
+    console.error(
+      "Virtual number confirm error:",
+      error?.code || "error",
+      error?.message || error
+    );
+
+    if (orderRow?.id) {
+      await refundVirtualNumberOrder(
+        orderRow.id,
+        {
+          code:
+            error?.code ||
+            "internal_error",
+          message:
+            error?.message ||
+            String(error)
+        }
+      ).catch(() => {});
+    }
+
+    await clearSession(
+      ctx.from.id
+    );
+
+    return editError(
+      ctx,
+      virtualNumberApiErrorText(
+        error
+      ),
+      mainMenu()
+    );
+  }
+});
+
+bot.action(
+  /^vn:otp:(\d+)$/,
+  async (ctx) => {
+    await answerCb(
+      ctx,
+      "در حال بررسی کد..."
+    );
+
+    const result =
+      await query(
+        `SELECT *
+         FROM virtual_number_orders
+         WHERE id = $1
+           AND telegram_id = $2`,
+        [
+          Number(ctx.match[1]),
+          ctx.from.id
+        ]
+      );
+
+    if (!result.rowCount) {
+      return editError(
+        ctx,
+        "سفارش پیدا نشد.",
+        mainMenu()
+      );
+    }
+
+    const order =
+      result.rows[0];
+
+    if (!order.activation_id) {
+      return editError(
+        ctx,
+        "شناسه فعال‌سازی پیدا نشد.",
+        mainMenu()
+      );
+    }
+
+    try {
+      const otp =
+        await getVirtualNumberLastOtp(
+          order.activation_id
+        );
+
+      const code =
+        String(
+          otp?.smsCode ||
+          otp?.code ||
+          ""
+        ).trim();
+
+      const smsText =
+        String(
+          otp?.smsText ||
+          otp?.text ||
+          ""
+        ).trim();
+
+      if (!code && !smsText) {
+        return ctx.answerCbQuery(
+          "کد هنوز نرسیده است.",
+          {
+            show_alert: true
+          }
+        );
+      }
+
+      await query(
+        `UPDATE virtual_number_orders
+         SET otp_code = $1,
+             otp_text = $2,
+             status = 'otp_received',
+             updated_at = NOW()
+         WHERE id = $3`,
+        [
+          code || null,
+          smsText || null,
+          order.id
+        ]
+      );
+
+      const text =
+        `${virtualNumberTitle()}\n\n` +
+        `شماره: <code>${escapeHtml(
+          order.phone_number || "-"
+        )}</code>\n` +
+        (
+          code
+            ? `کد: <code>${escapeHtml(code)}</code>\n`
+            : ""
+        ) +
+        (
+          smsText
+            ? `پیام: ${escapeHtml(smsText)}`
+            : ""
+        );
+
+      return ctx.reply(
+        text,
+        htmlText(text)
+      );
+    } catch (error) {
+      if (
+        error instanceof
+          HeroSmsApiError &&
+        error.status === 404
+      ) {
+        return ctx.answerCbQuery(
+          "کد هنوز دریافت نشده است.",
+          {
+            show_alert: true
+          }
+        );
+      }
+
+      console.error(
+        "Virtual number OTP error:",
+        error?.code || "error",
+        error?.message || error
+      );
+
+      return ctx.answerCbQuery(
+        "فعلاً دریافت کد ممکن نشد.",
+        {
+          show_alert: true
+        }
+      );
+    }
+  }
+);
+
+bot.action(
+  /^vn:cancel:(\d+)$/,
+  async (ctx) => {
+    await answerCb(
+      ctx,
+      "در حال لغو شماره..."
+    );
+
+    const client =
+      await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      const result =
+        await client.query(
+          `SELECT *
+           FROM virtual_number_orders
+           WHERE id = $1
+             AND telegram_id = $2
+           FOR UPDATE`,
+          [
+            Number(ctx.match[1]),
+            ctx.from.id
+          ]
+        );
+
+      if (!result.rowCount) {
+        await client.query("ROLLBACK");
+
+        return editError(
+          ctx,
+          "سفارش پیدا نشد.",
+          mainMenu()
+        );
+      }
+
+      const order =
+        result.rows[0];
+
+      if (order.refunded) {
+        await client.query("ROLLBACK");
+
+        return ctx.answerCbQuery(
+          "این سفارش قبلاً لغو و مبلغ آن برگردانده شده است.",
+          {
+            show_alert: true
+          }
+        );
+      }
+
+      if (!order.activation_id) {
+        await client.query("ROLLBACK");
+
+        return editError(
+          ctx,
+          "شناسه فعال‌سازی پیدا نشد.",
+          mainMenu()
+        );
+      }
+
+      try {
+        await cancelVirtualNumber(
+          order.activation_id
+        );
+      } catch (error) {
+        await client.query("ROLLBACK");
+
+        return ctx.answerCbQuery(
+          (
+            error?.details ||
+            error?.message ||
+            "لغو این شماره در حال حاضر ممکن نیست."
+          ).slice(0, 180),
+          {
+            show_alert: true
+          }
+        );
+      }
+
+      await client.query(
+        `UPDATE users
+         SET balance = balance + $1
+         WHERE telegram_id = $2`,
+        [
+          Number(
+            order.charge || 0
+          ),
+          ctx.from.id
+        ]
+      );
+
+      await client.query(
+        `UPDATE virtual_number_orders
+         SET status = 'cancelled',
+             refunded = TRUE,
+             refunded_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [order.id]
+      );
+
+      await client.query("COMMIT");
+
+      const text =
+        `${virtualNumberTitle()}\n\n` +
+        "شماره لغو شد و مبلغ کامل به کیف پول شما برگشت.";
+
+      return ctx.editMessageText(
+        text,
+        htmlText(
+          text,
+          mainMenu()
+        )
+      );
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
+
+      console.error(
+        "Virtual number cancel error:",
+        error?.message || error
+      );
+
+      return editError(
+        ctx,
+        "لغو شماره ممکن نشد.",
+        mainMenu()
+      );
+    } finally {
+      client.release();
+    }
+  }
+);
 
 bot.action("order:platforms", async (ctx) => {
   await answerCb(ctx);
@@ -2593,6 +4327,16 @@ bot.on("text", async (ctx) => {
     await clearSession(ctx.from.id);
     return showCertificateDevices(
       ctx,
+      { edit: false }
+    );
+  }
+
+  if (text === "شماره مجازی") {
+    await clearSession(ctx.from.id);
+
+    return showVirtualNumberServices(
+      ctx,
+      0,
       { edit: false }
     );
   }

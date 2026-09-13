@@ -143,6 +143,42 @@ export async function initDatabase() {
     ON certificate_orders (certificate_id);
   `);
 
+  await query(`
+    CREATE TABLE IF NOT EXISTS virtual_number_orders (
+      id BIGSERIAL PRIMARY KEY,
+      telegram_id BIGINT NOT NULL REFERENCES users(telegram_id),
+      provider TEXT NOT NULL DEFAULT 'herosms',
+      request_token TEXT NOT NULL UNIQUE,
+      activation_id TEXT UNIQUE,
+      service_code TEXT NOT NULL,
+      service_name TEXT,
+      country_id INT NOT NULL,
+      country_name TEXT,
+      phone_number TEXT,
+      provider_cost NUMERIC(14,4) NOT NULL DEFAULT 0,
+      charge NUMERIC(14,4) NOT NULL DEFAULT 0,
+      currency INT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      otp_code TEXT,
+      otp_text TEXT,
+      refunded BOOLEAN NOT NULL DEFAULT FALSE,
+      refunded_at TIMESTAMPTZ,
+      provider_payload JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_virtual_number_orders_user_created
+    ON virtual_number_orders (telegram_id, created_at DESC);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_virtual_number_orders_activation
+    ON virtual_number_orders (activation_id);
+  `);
+
   await seedPlatformsAndCategories();
 }
 

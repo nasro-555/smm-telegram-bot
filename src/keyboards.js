@@ -25,7 +25,8 @@ export const CUSTOM_EMOJI = {
     support: "5431376038628171216",
     certificate: "6118630226860707869",
     iphone: "5323354952549015465",
-    ipad: "5235967138467955882"
+    ipad: "5235967138467955882",
+    virtualNumber: "5224450179368767019"
   },
   categories: {
     followers: "5165730662103122933",
@@ -168,6 +169,13 @@ export const mainMenu = () =>
     ],
     [
       customEmojiCallback(
+        "شماره مجازی",
+        "menu:virtual_number",
+        CUSTOM_EMOJI.menu.virtualNumber
+      )
+    ],
+    [
+      customEmojiCallback(
         "سفارش‌های من",
         "menu:orders",
         CUSTOM_EMOJI.menu.orders
@@ -243,6 +251,13 @@ export const persistentMenu = () => ({
         {
           text: "Certificate آیفون / آیپد",
           icon_custom_emoji_id: CUSTOM_EMOJI.menu.certificate,
+          style: "primary"
+        }
+      ],
+      [
+        {
+          text: "شماره مجازی",
+          icon_custom_emoji_id: CUSTOM_EMOJI.menu.virtualNumber,
           style: "primary"
         }
       ],
