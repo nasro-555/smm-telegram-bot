@@ -846,32 +846,118 @@ function formatVirtualNumberPrice(value) {
     .replace(/\.$/, "");
 }
 
-function virtualNumberApiErrorText(error) {
-  const code =
+function normalizeVirtualNumberErrorCode(
+  error
+) {
+  const raw =
     String(
       error?.code ||
-      error?.message ||
-      ""
-    ).toUpperCase();
+      (
+        error?.status
+          ? `HTTP_${error.status}`
+          : "UNKNOWN"
+      )
+    )
+      .toUpperCase()
+      .trim();
+
+  return (
+    raw
+      .replace(
+        /[^A-Z0-9_.:-]+/g,
+        "_"
+      )
+      .slice(0, 64) ||
+    "UNKNOWN"
+  );
+}
+
+function sanitizeVirtualNumberErrorDetail(
+  value
+) {
+  let text =
+    String(value ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  if (!text) {
+    return "";
+  }
+
+  text = text
+    .replace(
+      /ApiKey\s+[A-Za-z0-9._~+/=-]+/gi,
+      "ApiKey [hidden]"
+    )
+    .replace(
+      /([?&](?:api_key|token|key)=)[^&\s]+/gi,
+      "$1[hidden]"
+    )
+    .replace(
+      /https?:\/\/\S+/gi,
+      "[hidden-url]"
+    );
+
+  return text.slice(0, 300);
+}
+
+function virtualNumberValidationDetails(
+  error
+) {
+  const errors =
+    error?.payload?.errors;
+
+  if (
+    !errors ||
+    typeof errors !== "object" ||
+    Array.isArray(errors)
+  ) {
+    return "";
+  }
+
+  return Object.entries(errors)
+    .flatMap(
+      ([field, messages]) => {
+        const values =
+          Array.isArray(messages)
+            ? messages
+            : [messages];
+
+        return values
+          .map(
+            (message) =>
+              sanitizeVirtualNumberErrorDetail(
+                `${field}: ${message}`
+              )
+          )
+          .filter(Boolean);
+      }
+    )
+    .slice(0, 4)
+    .join(" | ");
+}
+
+function virtualNumberApiErrorText(error) {
+  const code =
+    normalizeVirtualNumberErrorCode(
+      error
+    );
 
   if (
     code.includes("NO_BALANCE") ||
     error?.status === 402
   ) {
     return (
-      "سرویس‌دهنده فعلاً موجودی کافی ندارد. " +
-      "مبلغی از کیف پول شما کم نشده است."
+      "موجودی سرویس شماره‌ها برای انجام این درخواست کافی نیست."
     );
   }
 
   if (
     code.includes("NO_NUMBERS") ||
-    code.includes("OFFER_NOT_FOUND") ||
-    error?.status === 404
+    code.includes("OFFER_NOT_FOUND")
   ) {
     return (
-      "این بسته فعلاً شماره موجود ندارد. " +
-      "یک کشور یا سرویس دیگر را انتخاب کنید."
+      "برای این سرویس و کشور در حال حاضر شماره‌ای موجود نیست."
     );
   }
 
@@ -880,37 +966,227 @@ function virtualNumberApiErrorText(error) {
     error?.status === 429
   ) {
     return (
-      "درخواست‌ها موقتاً زیاد شده است. " +
-      "کمی بعد دوباره امتحان کنید."
+      "تعداد درخواست‌ها موقتاً از حد مجاز بیشتر شده است."
     );
   }
 
   if (
     code.includes("UNAUTH") ||
+    code.includes("BAD_KEY") ||
     code.includes("CONFIG_ERROR") ||
     error?.status === 401
   ) {
     return (
-      "اتصال به سرویس شماره‌ها تنظیم نیست. " +
-      "لطفاً با پشتیبانی تماس بگیرید."
+      "اتصال سرویس شماره‌ها احراز هویت نشده است. لطفاً با پشتیبانی تماس بگیرید."
     );
   }
 
   if (
     code.includes("TIMEOUT") ||
     code.includes("NETWORK") ||
+    code.includes("SERVER_ERROR") ||
     error?.status >= 500
   ) {
     return (
-      "سرویس شماره‌ها موقتاً در دسترس نیست. " +
-      "کمی بعد دوباره امتحان کنید."
+      "سرویس شماره‌ها موقتاً پاسخ نمی‌دهد."
     );
   }
 
+  const detail =
+    sanitizeVirtualNumberErrorDetail(
+      error?.details ||
+      error?.message
+    );
+
   return (
-    "انجام درخواست ممکن نشد. " +
-    "کمی بعد دوباره امتحان کنید."
+    detail ||
+    "انجام درخواست ممکن نشد."
   );
+}
+
+function virtualNumberPurchaseErrorText(
+  error
+) {
+  const code =
+    normalizeVirtualNumberErrorCode(
+      error
+    );
+
+  const status =
+    Number(error?.status || 0);
+
+  const providerDetail =
+    sanitizeVirtualNumberErrorDetail(
+      error?.details ||
+      error?.message
+    );
+
+  const validationDetail =
+    virtualNumberValidationDetails(
+      error
+    );
+
+  let reason = "";
+
+  if (
+    code.includes("NO_NUMBERS") ||
+    code.includes("OFFER_NOT_FOUND")
+  ) {
+    reason =
+      "برای سرویس و کشور انتخاب‌شده در حال حاضر شماره‌ای موجود نیست.";
+  } else if (
+    code.includes("NO_BALANCE") ||
+    status === 402
+  ) {
+    reason =
+      "موجودی حساب تأمین‌کننده برای خرید این شماره کافی نیست.";
+  } else if (
+    code.includes("WRONG_MAX_PRICE")
+  ) {
+    reason =
+      "قیمت شماره در لحظه خرید تغییر کرده یا از قیمت تأییدشده بالاتر رفته است.";
+  } else if (
+    code.includes("WRONG_COUNTRY")
+  ) {
+    reason =
+      "شناسه کشور توسط سرویس‌دهنده نامعتبر اعلام شده است.";
+  } else if (
+    code.includes("WRONG_SERVICE")
+  ) {
+    reason =
+      "سرویس انتخاب‌شده توسط سرویس‌دهنده پشتیبانی نمی‌شود.";
+  } else if (
+    code.includes("SERVICE_NOT_AVAILABLE")
+  ) {
+    reason =
+      "این سرویس در کشور انتخاب‌شده در حال حاضر برای فروش فعال نیست.";
+  } else if (
+    code.includes("BANNED")
+  ) {
+    reason =
+      "خرید برای حساب تأمین‌کننده یا این ترکیب کشور و سرویس موقتاً محدود شده است.";
+
+    const retrySeconds =
+      Number(
+        error?.payload?.info
+          ?.retry_after_seconds || 0
+      );
+
+    if (
+      Number.isFinite(retrySeconds) &&
+      retrySeconds > 0
+    ) {
+      reason +=
+        ` زمان باقی‌مانده محدودیت: ${Math.ceil(
+          retrySeconds / 60
+        )} دقیقه.`;
+    }
+  } else if (
+    code.includes("CHANNELS_LIMIT")
+  ) {
+    reason =
+      "تعداد خریدهای هم‌زمان حساب تأمین‌کننده به سقف مجاز رسیده است.";
+  } else if (
+    code.includes("ACCOUNT_INACTIVE")
+  ) {
+    reason =
+      "حساب تأمین‌کننده غیرفعال است و خرید جدید قبول نمی‌شود.";
+  } else if (
+    code.includes("RATE_LIMIT") ||
+    status === 429
+  ) {
+    reason =
+      "تعداد درخواست‌های خرید از حد مجاز سرویس‌دهنده بیشتر شده است.";
+  } else if (
+    code.includes("UNPROCESSABLE_ENTITY")
+  ) {
+    reason =
+      validationDetail ||
+      "یکی از اطلاعات ارسال‌شده برای خرید توسط سرویس‌دهنده نامعتبر اعلام شده است.";
+  } else if (
+    code.includes("BAD_KEY") ||
+    code.includes("UNAUTH") ||
+    code.includes("CONFIG_ERROR") ||
+    status === 401
+  ) {
+    reason =
+      "احراز هویت حساب تأمین‌کننده ناموفق است.";
+  } else if (
+    code.includes("INVALID_RESPONSE")
+  ) {
+    reason =
+      "سرویس‌دهنده پاسخ خرید را بدون شناسه فعال‌سازی برگرداند.";
+  } else if (
+    code.includes("TIMEOUT")
+  ) {
+    reason =
+      "پاسخ سرویس‌دهنده در زمان تعیین‌شده دریافت نشد.";
+  } else if (
+    code.includes("NETWORK")
+  ) {
+    reason =
+      "ارتباط شبکه با سرویس‌دهنده هنگام خرید قطع شد.";
+  } else if (
+    code.includes("SERVER_ERROR") ||
+    status >= 500
+  ) {
+    reason =
+      "سرور سرویس‌دهنده هنگام خرید خطای داخلی برگرداند.";
+  } else if (
+    code.includes("NOT_FOUND") ||
+    status === 404
+  ) {
+    reason =
+      "بسته یا منبع موردنیاز برای این خرید توسط سرویس‌دهنده پیدا نشد.";
+  } else {
+    reason =
+      providerDetail ||
+      "دلیل مشخصی از طرف سرویس‌دهنده برگردانده نشد.";
+  }
+
+  const lines = [
+    "خرید شماره انجام نشد.",
+    "",
+    `دلیل: ${reason}`,
+    `کد خطا: ${code}`
+  ];
+
+  if (
+    providerDetail &&
+    !reason.includes(
+      providerDetail
+    ) &&
+    providerDetail.toUpperCase() !==
+      code
+  ) {
+    lines.push(
+      `جزئیات سرویس‌دهنده: ${providerDetail}`
+    );
+  }
+
+  if (
+    validationDetail &&
+    !reason.includes(
+      validationDetail
+    )
+  ) {
+    lines.push(
+      `جزئیات ورودی: ${validationDetail}`
+    );
+  }
+
+  if (status > 0) {
+    lines.push(
+      `وضعیت پاسخ: HTTP ${status}`
+    );
+  }
+
+  lines.push(
+    "",
+    "اگر مبلغ خرید از کیف پول کم شده باشد، به‌صورت خودکار برگشت داده شده است."
+  );
+
+  return lines.join("\n");
 }
 
 async function showVirtualNumberServices(
@@ -925,7 +1201,7 @@ async function showVirtualNumberServices(
     if (!services.length) {
       const text =
         `${virtualNumberTitle()}\n\n` +
-        "فعلاً هیچ سرویس فعالی از API دریافت نشد.";
+        "فعلاً هیچ سرویس فعالی موجود نیست.";
 
       const options = htmlText(
         text,
@@ -1181,17 +1457,38 @@ async function showVirtualNumberPackages(
 
     const rows =
       pagePackages.map(
-        (item, offset) => [
-          Markup.button.callback(
-            `${shortName(
+        (item, offset) => {
+          const flag =
+            String(
+              item.countryFlag ||
+              "🌍"
+            );
+
+          const phoneCode =
+            String(
+              item.countryPhoneCode ||
+              ""
+            ).trim();
+
+          const countryLabel =
+            `${flag} ${shortName(
               item.countryName,
-              28
-            )} | $${formatVirtualNumberPrice(
-              item.sellingPrice
-            )}`,
-            `vn:p:${start + offset}:${safePage}`
-          )
-        ]
+              23
+            )}${
+              phoneCode
+                ? ` +${phoneCode}`
+                : ""
+            }`;
+
+          return [
+            Markup.button.callback(
+              `${countryLabel} | $${formatVirtualNumberPrice(
+                item.sellingPrice
+              )}`,
+              `vn:p:${start + offset}:${safePage}`
+            )
+          ];
+        }
       );
 
     if (totalPages > 1) {
@@ -1233,8 +1530,7 @@ async function showVirtualNumberPackages(
     const text =
       `${virtualNumberTitle()}\n\n` +
       `سرویس: ${escapeHtml(service.name)}\n` +
-      "کشور و بسته موردنظر را انتخاب کنید.\n" +
-      "قیمت‌های زیر به‌صورت زنده از API محاسبه شده‌اند." +
+      "کشور و بسته موردنظر را انتخاب کنید." +
       (
         totalPages > 1
           ? `\nصفحه ${safePage + 1} از ${totalPages}`
@@ -1272,6 +1568,42 @@ async function showVirtualNumberPackages(
   }
 }
 
+function virtualNumberCountryDisplay(
+  data
+) {
+  const flag =
+    String(
+      data?.country_flag ||
+      data?.countryFlag ||
+      "🌍"
+    ).trim();
+
+  const name =
+    String(
+      data?.country_name ||
+      data?.countryName ||
+      "-"
+    ).trim();
+
+  const phoneCode =
+    String(
+      data?.country_phone_code ||
+      data?.countryPhoneCode ||
+      ""
+    )
+      .replace(/^\+/, "")
+      .trim();
+
+  return (
+    `${flag} ${name}` +
+    (
+      phoneCode
+        ? ` +${phoneCode}`
+        : ""
+    )
+  ).trim();
+}
+
 async function renderVirtualNumberChoice(
   ctx,
   data,
@@ -1307,7 +1639,7 @@ async function renderVirtualNumberChoice(
     const text =
       `${virtualNumberTitle()}\n\n` +
       `سرویس: ${escapeHtml(data.service_name)}\n` +
-      `کشور: ${escapeHtml(data.country_name)}\n` +
+      `کشور: ${escapeHtml(virtualNumberCountryDisplay(data))}\n` +
       `قیمت: $${formatVirtualNumberPrice(price)}\n` +
       `موجودی شما: $${balance.toFixed(2)}\n` +
       `کسری موجودی: $${formatVirtualNumberPrice(shortfall)}\n\n` +
@@ -1359,7 +1691,7 @@ async function renderVirtualNumberChoice(
   const text =
     `${virtualNumberTitle()}\n\n` +
     `سرویس: ${escapeHtml(data.service_name)}\n` +
-    `کشور: ${escapeHtml(data.country_name)}\n` +
+    `کشور: ${escapeHtml(virtualNumberCountryDisplay(data))}\n` +
     `قیمت: $${formatVirtualNumberPrice(price)}\n` +
     `موجودی شما: $${balance.toFixed(2)}\n\n` +
     "خرید این شماره را تأیید می‌کنید؟";
@@ -1702,6 +2034,15 @@ bot.action(
         ),
       country_name:
         selected.countryName,
+      country_flag:
+        selected.countryFlag ||
+        "🌍",
+      country_phone_code:
+        selected.countryPhoneCode ||
+        "",
+      country_iso2:
+        selected.countryIso2 ||
+        "",
       provider_price:
         Number(
           selected.providerPrice
@@ -1992,7 +2333,19 @@ bot.action("vn:confirm", async (ctx) => {
         ),
       country_name:
         current.countryName ||
-        data.country_name
+        data.country_name,
+      country_flag:
+        current.countryFlag ||
+        data.country_flag ||
+        "🌍",
+      country_phone_code:
+        current.countryPhoneCode ||
+        data.country_phone_code ||
+        "",
+      country_iso2:
+        current.countryIso2 ||
+        data.country_iso2 ||
+        ""
     };
 
     if (
@@ -2097,8 +2450,9 @@ bot.action("vn:confirm", async (ctx) => {
                 .country_id
             ),
             String(
-              currentData
-                .country_name || ""
+              virtualNumberCountryDisplay(
+                currentData
+              )
             ),
             Number(
               currentData
@@ -2180,7 +2534,7 @@ bot.action("vn:confirm", async (ctx) => {
 
       return editError(
         ctx,
-        virtualNumberApiErrorText(
+        virtualNumberPurchaseErrorText(
           error
         ),
         mainMenu()
@@ -2288,11 +2642,25 @@ bot.action("vn:confirm", async (ctx) => {
       ctx.from.id
     );
 
+    const failureText =
+      error instanceof HeroSmsApiError
+        ? virtualNumberPurchaseErrorText(
+            error
+          )
+        : [
+            "خرید شماره انجام نشد.",
+            "",
+            "دلیل: خطای داخلی هنگام ثبت خرید رخ داد.",
+            `کد خطا: ${normalizeVirtualNumberErrorCode(
+              error
+            )}`,
+            "",
+            "اگر مبلغ خرید از کیف پول کم شده باشد، به‌صورت خودکار برگشت داده شده است."
+          ].join("\n");
+
     return editError(
       ctx,
-      virtualNumberApiErrorText(
-        error
-      ),
+      failureText,
       mainMenu()
     );
   }
