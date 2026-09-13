@@ -64,19 +64,21 @@ function normalizeName(value) {
 export function platformEmojiId(platform) {
   const name = normalizeName(platform?.name ?? platform);
 
-  if (name === "instagram") return CUSTOM_EMOJI.platforms.instagram;
-  if (name === "facebook") return CUSTOM_EMOJI.platforms.facebook;
-  if (name === "tiktok") return CUSTOM_EMOJI.platforms.tiktok;
-  if (name === "youtube") return CUSTOM_EMOJI.platforms.youtube;
-  if (name === "telegram") return CUSTOM_EMOJI.platforms.telegram;
-  if (["twitter / x", "twitter", "x"].includes(name)) return CUSTOM_EMOJI.platforms.twitter;
-  if (name === "whatsapp") return CUSTOM_EMOJI.platforms.whatsapp;
-  if (["kik", "kick", "kiki"].includes(name)) return CUSTOM_EMOJI.platforms.kik;
-  if (name === "threads") return CUSTOM_EMOJI.platforms.threads;
-  if (["linkedin", "linkdin"].includes(name)) return CUSTOM_EMOJI.platforms.linkedin;
-  if (["google maps", "google map"].includes(name)) return CUSTOM_EMOJI.platforms.googleMaps;
-  if (name === "likee") return CUSTOM_EMOJI.platforms.likee;
-  if (name === "snapchat") return CUSTOM_EMOJI.platforms.snapchat;
+  // HeroSMS names can contain suffixes such as "Instagram+Threads" or
+  // "TikTok/Douyin". Match known brands inside the dynamic API label.
+  if (name.includes("whatsapp")) return CUSTOM_EMOJI.platforms.whatsapp;
+  if (name.includes("instagram")) return CUSTOM_EMOJI.platforms.instagram;
+  if (name.includes("telegram")) return CUSTOM_EMOJI.platforms.telegram;
+  if (name.includes("facebook")) return CUSTOM_EMOJI.platforms.facebook;
+  if (name.includes("tiktok") || name.includes("douyin")) return CUSTOM_EMOJI.platforms.tiktok;
+  if (name.includes("youtube")) return CUSTOM_EMOJI.platforms.youtube;
+  if (name === "x" || name.includes("twitter")) return CUSTOM_EMOJI.platforms.twitter;
+  if (name.includes("kick") || name.includes("kik")) return CUSTOM_EMOJI.platforms.kik;
+  if (name.includes("threads")) return CUSTOM_EMOJI.platforms.threads;
+  if (name.includes("linkedin") || name.includes("linkdin")) return CUSTOM_EMOJI.platforms.linkedin;
+  if (name.includes("google maps") || name.includes("google map")) return CUSTOM_EMOJI.platforms.googleMaps;
+  if (name.includes("likee")) return CUSTOM_EMOJI.platforms.likee;
+  if (name.includes("snapchat")) return CUSTOM_EMOJI.platforms.snapchat;
 
   return null;
 }
@@ -258,13 +260,6 @@ export const persistentMenu = () => ({
         {
           text: "شماره مجازی",
           icon_custom_emoji_id: CUSTOM_EMOJI.menu.virtualNumber,
-          style: "primary"
-        }
-      ],
-      [
-        {
-          text: "قیمت بسته‌ها",
-          icon_custom_emoji_id: CUSTOM_EMOJI.menu.prices,
           style: "primary"
         }
       ],

@@ -149,6 +149,138 @@ bot.telegram.callApi = async (
   );
 };
 
+async function processVirtualNumberAutoCancels() {
+  const due = await query(
+    `SELECT * FROM virtual_number_orders
+     WHERE auto_cancel_at IS NOT NULL
+       AND auto_cancel_at <= NOW()
+       AND otp_received_at IS NULL
+       AND refunded = FALSE
+       AND status = 'active'
+     ORDER BY auto_cancel_at ASC
+     LIMIT 25`
+  );
+
+  for (const order of due.rows) {
+    try {
+      // One final OTP check prevents cancelling a number whose code arrived
+      // just before the 10-minute deadline.
+      try {
+        const otp = await getVirtualNumberLastOtp(order.activation_id);
+        const code = String(otp?.smsCode || otp?.code || "").trim();
+        const smsText = String(otp?.smsText || otp?.text || "").trim();
+        if (code || smsText) {
+          await query(
+            `UPDATE virtual_number_orders
+             SET otp_code = $1, otp_text = $2, status = 'otp_received',
+                 otp_received_at = COALESCE(otp_received_at, NOW()),
+                 auto_cancel_at = NULL, updated_at = NOW()
+             WHERE id = $3 AND otp_received_at IS NULL`,
+            [code || null, smsText || null, order.id]
+          );
+          await bot.telegram.sendMessage(
+            order.telegram_id,
+            `✅ کد شماره مجازی دریافت شد.\n\nشماره: ${order.phone_number || "-"}\nکد: ${code || "در پیام SMS"}`
+          ).catch(() => {});
+          continue;
+        }
+      } catch (otpError) {
+        if (!(otpError instanceof HeroSmsApiError && otpError.status === 404)) {
+          console.error("Auto-cancel OTP precheck:", otpError?.message || otpError);
+        }
+      }
+
+      try {
+        await cancelVirtualNumber(order.activation_id);
+      } catch (cancelError) {
+        const detail = String(cancelError?.details || cancelError?.message || "Provider cancellation rejected").slice(0, 500);
+        await query(
+          `UPDATE virtual_number_orders
+           SET cancel_error = $1, auto_cancel_at = NULL, updated_at = NOW()
+           WHERE id = $2`,
+          [detail, order.id]
+        );
+        await bot.telegram.sendMessage(
+          order.telegram_id,
+          `⚠️ لغو خودکار شماره توسط سرویس‌دهنده رد شد.\n\nشماره: ${order.phone_number || "-"}\nدلیل: ${detail}\nمبلغ Refund نشده است.`
+        ).catch(() => {});
+        continue;
+      }
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const locked = await client.query(
+          `SELECT * FROM virtual_number_orders WHERE id = $1 FOR UPDATE`,
+          [order.id]
+        );
+        const current = locked.rows[0];
+        if (current && !current.refunded && !current.otp_received_at) {
+          await client.query(
+            `UPDATE users SET balance = balance + $1 WHERE telegram_id = $2`,
+            [Number(current.charge || 0), current.telegram_id]
+          );
+          await client.query(
+            `UPDATE virtual_number_orders
+             SET status = 'cancelled', refunded = TRUE, refunded_at = NOW(),
+                 cancelled_at = NOW(), auto_cancel_at = NULL, cancel_error = NULL,
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [current.id]
+          );
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        try { await client.query("ROLLBACK"); } catch {}
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      await bot.telegram.sendMessage(
+        order.telegram_id,
+        `❌ شماره مجازی پس از 10 دقیقه بدون دریافت کد، خودکار لغو شد.\n\nشماره: ${order.phone_number || "-"}\n💰 $${Number(order.charge || 0).toFixed(2)} به کیف پول شما برگشت.`
+      ).catch(() => {});
+    } catch (error) {
+      console.error("Virtual number auto-cancel error:", order.id, error?.message || error);
+    }
+  }
+}
+
+async function refreshVirtualNumberTimers() {
+  const active = await query(
+    `SELECT * FROM virtual_number_orders
+     WHERE status = 'active' AND refunded = FALSE
+       AND otp_received_at IS NULL AND auto_cancel_at IS NOT NULL
+       AND order_message_chat_id IS NOT NULL AND order_message_id IS NOT NULL
+     ORDER BY created_at DESC LIMIT 100`
+  );
+  for (const order of active.rows) {
+    const text = await virtualNumberOrderText(order);
+    await bot.telegram.editMessageText(
+      order.order_message_chat_id,
+      Number(order.order_message_id),
+      undefined,
+      text,
+      htmlText(text, virtualNumberOrderKeyboard(order.id))
+    ).catch(() => {});
+  }
+}
+
+let virtualNumberWorkerRunning = false;
+async function runVirtualNumberWorker() {
+  if (virtualNumberWorkerRunning) return;
+  virtualNumberWorkerRunning = true;
+  try {
+    await processVirtualNumberAutoCancels();
+    await refreshVirtualNumberTimers();
+  } catch (error) {
+    console.error("Virtual number worker error:", error?.message || error);
+  } finally {
+    virtualNumberWorkerRunning = false;
+  }
+}
+
 bot.use(async (ctx, next) => {
   if (ctx.message?.entities) {
     console.log(
@@ -830,6 +962,40 @@ function virtualNumberTitle(
   );
 }
 
+function htmlVirtualService(name) {
+  const label = String(name || "-");
+  const emojiId = platformEmojiId(label);
+  return `${emojiId ? tgEmoji(emojiId, "📱") : "📱"} ${escapeHtml(label)}`;
+}
+
+function virtualServiceButton(text, callbackData, serviceName) {
+  return customEmojiCallback(
+    text,
+    callbackData,
+    platformEmojiId(serviceName)
+  );
+}
+
+function formatAfplayDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kabul",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false
+  }).format(date).replace(",", "");
+}
+
+function remainingTenMinuteText(createdAt, otpReceivedAt, status) {
+  if (otpReceivedAt || !["active", "purchasing"].includes(String(status || ""))) return null;
+  const end = new Date(createdAt).getTime() + 10 * 60 * 1000;
+  const seconds = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+  const ss = String(seconds % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
+
 function formatVirtualNumberPrice(value) {
   const number = Number(value || 0);
 
@@ -846,118 +1012,32 @@ function formatVirtualNumberPrice(value) {
     .replace(/\.$/, "");
 }
 
-function normalizeVirtualNumberErrorCode(
-  error
-) {
-  const raw =
-    String(
-      error?.code ||
-      (
-        error?.status
-          ? `HTTP_${error.status}`
-          : "UNKNOWN"
-      )
-    )
-      .toUpperCase()
-      .trim();
-
-  return (
-    raw
-      .replace(
-        /[^A-Z0-9_.:-]+/g,
-        "_"
-      )
-      .slice(0, 64) ||
-    "UNKNOWN"
-  );
-}
-
-function sanitizeVirtualNumberErrorDetail(
-  value
-) {
-  let text =
-    String(value ?? "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  if (!text) {
-    return "";
-  }
-
-  text = text
-    .replace(
-      /ApiKey\s+[A-Za-z0-9._~+/=-]+/gi,
-      "ApiKey [hidden]"
-    )
-    .replace(
-      /([?&](?:api_key|token|key)=)[^&\s]+/gi,
-      "$1[hidden]"
-    )
-    .replace(
-      /https?:\/\/\S+/gi,
-      "[hidden-url]"
-    );
-
-  return text.slice(0, 300);
-}
-
-function virtualNumberValidationDetails(
-  error
-) {
-  const errors =
-    error?.payload?.errors;
-
-  if (
-    !errors ||
-    typeof errors !== "object" ||
-    Array.isArray(errors)
-  ) {
-    return "";
-  }
-
-  return Object.entries(errors)
-    .flatMap(
-      ([field, messages]) => {
-        const values =
-          Array.isArray(messages)
-            ? messages
-            : [messages];
-
-        return values
-          .map(
-            (message) =>
-              sanitizeVirtualNumberErrorDetail(
-                `${field}: ${message}`
-              )
-          )
-          .filter(Boolean);
-      }
-    )
-    .slice(0, 4)
-    .join(" | ");
-}
-
 function virtualNumberApiErrorText(error) {
   const code =
-    normalizeVirtualNumberErrorCode(
-      error
-    );
+    String(
+      error?.code ||
+      error?.message ||
+      ""
+    ).toUpperCase();
 
   if (
     code.includes("NO_BALANCE") ||
     error?.status === 402
   ) {
     return (
-      "موجودی سرویس شماره‌ها برای انجام این درخواست کافی نیست."
+      "سرویس‌دهنده فعلاً موجودی کافی ندارد. " +
+      "مبلغی از کیف پول شما کم نشده است."
     );
   }
 
   if (
     code.includes("NO_NUMBERS") ||
-    code.includes("OFFER_NOT_FOUND")
+    code.includes("OFFER_NOT_FOUND") ||
+    error?.status === 404
   ) {
     return (
-      "برای این سرویس و کشور در حال حاضر شماره‌ای موجود نیست."
+      "این بسته فعلاً شماره موجود ندارد. " +
+      "یک کشور یا سرویس دیگر را انتخاب کنید."
     );
   }
 
@@ -966,227 +1046,37 @@ function virtualNumberApiErrorText(error) {
     error?.status === 429
   ) {
     return (
-      "تعداد درخواست‌ها موقتاً از حد مجاز بیشتر شده است."
+      "درخواست‌ها موقتاً زیاد شده است. " +
+      "کمی بعد دوباره امتحان کنید."
     );
   }
 
   if (
     code.includes("UNAUTH") ||
-    code.includes("BAD_KEY") ||
     code.includes("CONFIG_ERROR") ||
     error?.status === 401
   ) {
     return (
-      "اتصال سرویس شماره‌ها احراز هویت نشده است. لطفاً با پشتیبانی تماس بگیرید."
+      "اتصال به سرویس شماره‌ها تنظیم نیست. " +
+      "لطفاً با پشتیبانی تماس بگیرید."
     );
   }
 
   if (
     code.includes("TIMEOUT") ||
     code.includes("NETWORK") ||
-    code.includes("SERVER_ERROR") ||
     error?.status >= 500
   ) {
     return (
-      "سرویس شماره‌ها موقتاً پاسخ نمی‌دهد."
+      "سرویس شماره‌ها موقتاً در دسترس نیست. " +
+      "کمی بعد دوباره امتحان کنید."
     );
   }
-
-  const detail =
-    sanitizeVirtualNumberErrorDetail(
-      error?.details ||
-      error?.message
-    );
 
   return (
-    detail ||
-    "انجام درخواست ممکن نشد."
+    "انجام درخواست ممکن نشد. " +
+    "کمی بعد دوباره امتحان کنید."
   );
-}
-
-function virtualNumberPurchaseErrorText(
-  error
-) {
-  const code =
-    normalizeVirtualNumberErrorCode(
-      error
-    );
-
-  const status =
-    Number(error?.status || 0);
-
-  const providerDetail =
-    sanitizeVirtualNumberErrorDetail(
-      error?.details ||
-      error?.message
-    );
-
-  const validationDetail =
-    virtualNumberValidationDetails(
-      error
-    );
-
-  let reason = "";
-
-  if (
-    code.includes("NO_NUMBERS") ||
-    code.includes("OFFER_NOT_FOUND")
-  ) {
-    reason =
-      "برای سرویس و کشور انتخاب‌شده در حال حاضر شماره‌ای موجود نیست.";
-  } else if (
-    code.includes("NO_BALANCE") ||
-    status === 402
-  ) {
-    reason =
-      "موجودی حساب تأمین‌کننده برای خرید این شماره کافی نیست.";
-  } else if (
-    code.includes("WRONG_MAX_PRICE")
-  ) {
-    reason =
-      "قیمت شماره در لحظه خرید تغییر کرده یا از قیمت تأییدشده بالاتر رفته است.";
-  } else if (
-    code.includes("WRONG_COUNTRY")
-  ) {
-    reason =
-      "شناسه کشور توسط سرویس‌دهنده نامعتبر اعلام شده است.";
-  } else if (
-    code.includes("WRONG_SERVICE")
-  ) {
-    reason =
-      "سرویس انتخاب‌شده توسط سرویس‌دهنده پشتیبانی نمی‌شود.";
-  } else if (
-    code.includes("SERVICE_NOT_AVAILABLE")
-  ) {
-    reason =
-      "این سرویس در کشور انتخاب‌شده در حال حاضر برای فروش فعال نیست.";
-  } else if (
-    code.includes("BANNED")
-  ) {
-    reason =
-      "خرید برای حساب تأمین‌کننده یا این ترکیب کشور و سرویس موقتاً محدود شده است.";
-
-    const retrySeconds =
-      Number(
-        error?.payload?.info
-          ?.retry_after_seconds || 0
-      );
-
-    if (
-      Number.isFinite(retrySeconds) &&
-      retrySeconds > 0
-    ) {
-      reason +=
-        ` زمان باقی‌مانده محدودیت: ${Math.ceil(
-          retrySeconds / 60
-        )} دقیقه.`;
-    }
-  } else if (
-    code.includes("CHANNELS_LIMIT")
-  ) {
-    reason =
-      "تعداد خریدهای هم‌زمان حساب تأمین‌کننده به سقف مجاز رسیده است.";
-  } else if (
-    code.includes("ACCOUNT_INACTIVE")
-  ) {
-    reason =
-      "حساب تأمین‌کننده غیرفعال است و خرید جدید قبول نمی‌شود.";
-  } else if (
-    code.includes("RATE_LIMIT") ||
-    status === 429
-  ) {
-    reason =
-      "تعداد درخواست‌های خرید از حد مجاز سرویس‌دهنده بیشتر شده است.";
-  } else if (
-    code.includes("UNPROCESSABLE_ENTITY")
-  ) {
-    reason =
-      validationDetail ||
-      "یکی از اطلاعات ارسال‌شده برای خرید توسط سرویس‌دهنده نامعتبر اعلام شده است.";
-  } else if (
-    code.includes("BAD_KEY") ||
-    code.includes("UNAUTH") ||
-    code.includes("CONFIG_ERROR") ||
-    status === 401
-  ) {
-    reason =
-      "احراز هویت حساب تأمین‌کننده ناموفق است.";
-  } else if (
-    code.includes("INVALID_RESPONSE")
-  ) {
-    reason =
-      "سرویس‌دهنده پاسخ خرید را بدون شناسه فعال‌سازی برگرداند.";
-  } else if (
-    code.includes("TIMEOUT")
-  ) {
-    reason =
-      "پاسخ سرویس‌دهنده در زمان تعیین‌شده دریافت نشد.";
-  } else if (
-    code.includes("NETWORK")
-  ) {
-    reason =
-      "ارتباط شبکه با سرویس‌دهنده هنگام خرید قطع شد.";
-  } else if (
-    code.includes("SERVER_ERROR") ||
-    status >= 500
-  ) {
-    reason =
-      "سرور سرویس‌دهنده هنگام خرید خطای داخلی برگرداند.";
-  } else if (
-    code.includes("NOT_FOUND") ||
-    status === 404
-  ) {
-    reason =
-      "بسته یا منبع موردنیاز برای این خرید توسط سرویس‌دهنده پیدا نشد.";
-  } else {
-    reason =
-      providerDetail ||
-      "دلیل مشخصی از طرف سرویس‌دهنده برگردانده نشد.";
-  }
-
-  const lines = [
-    "خرید شماره انجام نشد.",
-    "",
-    `دلیل: ${reason}`,
-    `کد خطا: ${code}`
-  ];
-
-  if (
-    providerDetail &&
-    !reason.includes(
-      providerDetail
-    ) &&
-    providerDetail.toUpperCase() !==
-      code
-  ) {
-    lines.push(
-      `جزئیات سرویس‌دهنده: ${providerDetail}`
-    );
-  }
-
-  if (
-    validationDetail &&
-    !reason.includes(
-      validationDetail
-    )
-  ) {
-    lines.push(
-      `جزئیات ورودی: ${validationDetail}`
-    );
-  }
-
-  if (status > 0) {
-    lines.push(
-      `وضعیت پاسخ: HTTP ${status}`
-    );
-  }
-
-  lines.push(
-    "",
-    "اگر مبلغ خرید از کیف پول کم شده باشد، به‌صورت خودکار برگشت داده شده است."
-  );
-
-  return lines.join("\n");
 }
 
 async function showVirtualNumberServices(
@@ -1201,7 +1091,7 @@ async function showVirtualNumberServices(
     if (!services.length) {
       const text =
         `${virtualNumberTitle()}\n\n` +
-        "فعلاً هیچ سرویس فعالی موجود نیست.";
+        "فعلاً هیچ سرویس فعالی از API دریافت نشد.";
 
       const options = htmlText(
         text,
@@ -1265,12 +1155,13 @@ async function showVirtualNumberServices(
     const rows =
       pageServices.map(
         (service, offset) => [
-          Markup.button.callback(
+          virtualServiceButton(
             `${shortName(
               service.name,
               34
             )} (${service.packageCount})`,
-            `vn:s:${start + offset}:${safePage}`
+            `vn:s:${start + offset}:${safePage}`,
+            service.name
           )
         ]
       );
@@ -1382,7 +1273,7 @@ async function showVirtualNumberPackages(
     if (!packages.length) {
       const text =
         `${virtualNumberTitle()}\n\n` +
-        `${escapeHtml(service.name)}\n\n` +
+        `${htmlVirtualService(service.name)}\n\n` +
         "فعلاً هیچ کشور دارای شماره برای این سرویس نیست.";
 
       const options = htmlText(
@@ -1457,38 +1348,17 @@ async function showVirtualNumberPackages(
 
     const rows =
       pagePackages.map(
-        (item, offset) => {
-          const flag =
-            String(
-              item.countryFlag ||
-              "🌍"
-            );
-
-          const phoneCode =
-            String(
-              item.countryPhoneCode ||
-              ""
-            ).trim();
-
-          const countryLabel =
-            `${flag} ${shortName(
+        (item, offset) => [
+          Markup.button.callback(
+            `${shortName(
               item.countryName,
-              23
-            )}${
-              phoneCode
-                ? ` +${phoneCode}`
-                : ""
-            }`;
-
-          return [
-            Markup.button.callback(
-              `${countryLabel} | $${formatVirtualNumberPrice(
-                item.sellingPrice
-              )}`,
-              `vn:p:${start + offset}:${safePage}`
-            )
-          ];
-        }
+              28
+            )} | $${formatVirtualNumberPrice(
+              item.sellingPrice
+            )}`,
+            `vn:p:${start + offset}:${safePage}`
+          )
+        ]
       );
 
     if (totalPages > 1) {
@@ -1529,7 +1399,7 @@ async function showVirtualNumberPackages(
 
     const text =
       `${virtualNumberTitle()}\n\n` +
-      `سرویس: ${escapeHtml(service.name)}\n` +
+      `سرویس: ${htmlVirtualService(service.name)}\n` +
       "کشور و بسته موردنظر را انتخاب کنید." +
       (
         totalPages > 1
@@ -1568,42 +1438,6 @@ async function showVirtualNumberPackages(
   }
 }
 
-function virtualNumberCountryDisplay(
-  data
-) {
-  const flag =
-    String(
-      data?.country_flag ||
-      data?.countryFlag ||
-      "🌍"
-    ).trim();
-
-  const name =
-    String(
-      data?.country_name ||
-      data?.countryName ||
-      "-"
-    ).trim();
-
-  const phoneCode =
-    String(
-      data?.country_phone_code ||
-      data?.countryPhoneCode ||
-      ""
-    )
-      .replace(/^\+/, "")
-      .trim();
-
-  return (
-    `${flag} ${name}` +
-    (
-      phoneCode
-        ? ` +${phoneCode}`
-        : ""
-    )
-  ).trim();
-}
-
 async function renderVirtualNumberChoice(
   ctx,
   data,
@@ -1639,7 +1473,7 @@ async function renderVirtualNumberChoice(
     const text =
       `${virtualNumberTitle()}\n\n` +
       `سرویس: ${escapeHtml(data.service_name)}\n` +
-      `کشور: ${escapeHtml(virtualNumberCountryDisplay(data))}\n` +
+      `کشور: ${escapeHtml(data.country_name)}\n` +
       `قیمت: $${formatVirtualNumberPrice(price)}\n` +
       `موجودی شما: $${balance.toFixed(2)}\n` +
       `کسری موجودی: $${formatVirtualNumberPrice(shortfall)}\n\n` +
@@ -1691,7 +1525,7 @@ async function renderVirtualNumberChoice(
   const text =
     `${virtualNumberTitle()}\n\n` +
     `سرویس: ${escapeHtml(data.service_name)}\n` +
-    `کشور: ${escapeHtml(virtualNumberCountryDisplay(data))}\n` +
+    `کشور: ${escapeHtml(data.country_name)}\n` +
     `قیمت: $${formatVirtualNumberPrice(price)}\n` +
     `موجودی شما: $${balance.toFixed(2)}\n\n` +
     "خرید این شماره را تأیید می‌کنید؟";
@@ -1743,7 +1577,7 @@ async function virtualNumberOrderText(
 
   return (
     `${virtualNumberTitle()}\n\n` +
-    `سرویس: ${escapeHtml(
+    `سرویس: ${htmlVirtualService(
       order?.service_name ||
       order?.service_code ||
       "-"
@@ -1759,6 +1593,9 @@ async function virtualNumberOrderText(
     `قیمت: $${formatVirtualNumberPrice(
       order?.charge || 0
     )}\n` +
+    (remainingTenMinuteText(order?.created_at, order?.otp_received_at, status)
+      ? `⏳ زمان تا لغو خودکار: ${remainingTenMinuteText(order?.created_at, order?.otp_received_at, status)}\n`
+      : "") +
     `وضعیت: ${escapeHtml(status)}`
   );
 }
@@ -2034,15 +1871,6 @@ bot.action(
         ),
       country_name:
         selected.countryName,
-      country_flag:
-        selected.countryFlag ||
-        "🌍",
-      country_phone_code:
-        selected.countryPhoneCode ||
-        "",
-      country_iso2:
-        selected.countryIso2 ||
-        "",
       provider_price:
         Number(
           selected.providerPrice
@@ -2333,19 +2161,7 @@ bot.action("vn:confirm", async (ctx) => {
         ),
       country_name:
         current.countryName ||
-        data.country_name,
-      country_flag:
-        current.countryFlag ||
-        data.country_flag ||
-        "🌍",
-      country_phone_code:
-        current.countryPhoneCode ||
-        data.country_phone_code ||
-        "",
-      country_iso2:
-        current.countryIso2 ||
-        data.country_iso2 ||
-        ""
+        data.country_name
     };
 
     if (
@@ -2450,9 +2266,8 @@ bot.action("vn:confirm", async (ctx) => {
                 .country_id
             ),
             String(
-              virtualNumberCountryDisplay(
-                currentData
-              )
+              currentData
+                .country_name || ""
             ),
             Number(
               currentData
@@ -2534,7 +2349,7 @@ bot.action("vn:confirm", async (ctx) => {
 
       return editError(
         ctx,
-        virtualNumberPurchaseErrorText(
+        virtualNumberApiErrorText(
           error
         ),
         mainMenu()
@@ -2570,9 +2385,12 @@ bot.action("vn:confirm", async (ctx) => {
              provider_cost = $3,
              currency = $4,
              status = 'active',
+             auto_cancel_at = NOW() + INTERVAL '10 minutes',
+             order_message_chat_id = $6,
+             order_message_id = $7,
              provider_payload = $5::jsonb,
              updated_at = NOW()
-         WHERE id = $6
+         WHERE id = $8
          RETURNING *`,
         [
           activationId,
@@ -2584,6 +2402,8 @@ bot.action("vn:confirm", async (ctx) => {
           JSON.stringify(
             activation
           ),
+          ctx.chat?.id || ctx.from.id,
+          ctx.callbackQuery?.message?.message_id || null,
           orderRow.id
         ]
       );
@@ -2642,25 +2462,11 @@ bot.action("vn:confirm", async (ctx) => {
       ctx.from.id
     );
 
-    const failureText =
-      error instanceof HeroSmsApiError
-        ? virtualNumberPurchaseErrorText(
-            error
-          )
-        : [
-            "خرید شماره انجام نشد.",
-            "",
-            "دلیل: خطای داخلی هنگام ثبت خرید رخ داد.",
-            `کد خطا: ${normalizeVirtualNumberErrorCode(
-              error
-            )}`,
-            "",
-            "اگر مبلغ خرید از کیف پول کم شده باشد، به‌صورت خودکار برگشت داده شده است."
-          ].join("\n");
-
     return editError(
       ctx,
-      failureText,
+      virtualNumberApiErrorText(
+        error
+      ),
       mainMenu()
     );
   }
@@ -2739,6 +2545,8 @@ bot.action(
          SET otp_code = $1,
              otp_text = $2,
              status = 'otp_received',
+             otp_received_at = COALESCE(otp_received_at, NOW()),
+             auto_cancel_at = NULL,
              updated_at = NOW()
          WHERE id = $3`,
         [
@@ -2895,6 +2703,9 @@ bot.action(
          SET status = 'cancelled',
              refunded = TRUE,
              refunded_at = NOW(),
+             cancelled_at = NOW(),
+             auto_cancel_at = NULL,
+             cancel_error = NULL,
              updated_at = NOW()
          WHERE id = $1`,
         [order.id]
@@ -3241,99 +3052,145 @@ async function replyMenuBalance(ctx) {
   );
 }
 
-async function replyMenuOrders(ctx) {
-  await clearSession(ctx.from.id);
+const ORDER_HISTORY_PAGE_SIZE = 1;
 
+function afplayOrderId(type, id) {
+  const prefix = type === "social" ? "S" : type === "virtual" ? "V" : "C";
+  return `AF-${prefix}-${id}`;
+}
+
+function orderStatusFa(status, refunded = false) {
+  if (refunded) return "💰 Refund شده";
+  const value = String(status || "").toLowerCase();
+  if (["completed", "complete", "success", "signed", "otp_received"].includes(value)) return "✅ تکمیل شده";
+  if (["cancelled", "canceled", "cancel_requested"].includes(value)) return "❌ لغو شده";
+  if (["failed", "error", "rejected"].includes(value)) return "⚠️ ناموفق";
+  if (["active", "processing", "inprogress", "in_progress"].includes(value)) return "🟡 در حال انجام";
+  return "⏳ در انتظار";
+}
+
+async function getUnifiedOrderPage(telegramId, page = 0) {
+  const safePage = Math.max(0, Number(page) || 0);
   const result = await query(
-    `SELECT
-       id,
-       quantity,
-       charge,
-       status,
-       service_name,
-       refill_supported,
-       cancel_supported,
-       cancel_closed,
-       cancel_requested_at,
-       refill_id,
-       refill_requested_at
-     FROM orders
-     WHERE telegram_id = $1
-     ORDER BY id DESC
-     LIMIT 10`,
-    [ctx.from.id]
+    `WITH all_orders AS (
+       SELECT 'social'::text AS order_type, o.id, o.created_at, o.charge, o.status,
+              o.service_name, o.link, o.quantity, p.name AS platform_name,
+              NULL::text AS country_name, NULL::text AS phone_number,
+              NULL::text AS otp_code, NULL::text AS otp_text, NULL::timestamptz AS otp_received_at,
+              FALSE AS refunded, NULL::timestamptz AS refunded_at, NULL::timestamptz AS cancelled_at,
+              NULL::text AS cancel_error, NULL::text AS udid, NULL::text AS plan_name,
+              o.refill_supported, o.cancel_supported, o.cancel_closed, o.cancel_requested_at, o.refill_id
+       FROM orders o LEFT JOIN platforms p ON p.id = o.platform_id
+       WHERE o.telegram_id = $1
+       UNION ALL
+       SELECT 'virtual', v.id, v.created_at, v.charge, v.status,
+              v.service_name, NULL, NULL, NULL,
+              v.country_name, v.phone_number, v.otp_code, v.otp_text, v.otp_received_at,
+              v.refunded, v.refunded_at, v.cancelled_at, v.cancel_error, NULL, NULL,
+              FALSE, FALSE, TRUE, NULL, NULL
+       FROM virtual_number_orders v WHERE v.telegram_id = $1
+       UNION ALL
+       SELECT 'certificate', c.id, c.created_at, c.charge, c.status,
+              'Certificate', NULL, NULL, NULL,
+              NULL, NULL, NULL, NULL, NULL,
+              FALSE, NULL, NULL, NULL, c.udid, c.plan_name,
+              FALSE, FALSE, TRUE, NULL, NULL
+       FROM certificate_orders c WHERE c.telegram_id = $1
+     )
+     SELECT *, COUNT(*) OVER()::int AS total_count
+     FROM all_orders
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1 OFFSET $2`,
+    [telegramId, safePage]
   );
+  return { row: result.rows[0] || null, page: safePage, total: result.rows[0]?.total_count || 0 };
+}
 
-  if (!result.rowCount) {
-    const text =
-      `${htmlMenuTitle("orders", "سفارش‌های من")}\\n\\n` +
-      "هنوز سفارشی ندارید.";
+function unifiedOrderText(order, page, total) {
+  const orderId = afplayOrderId(order.order_type, order.id);
+  const lines = [
+    `${htmlMenuTitle("orders", "سفارش‌های من")}`,
+    "",
+    `${tgEmoji(ORDER_RESULT_EMOJI.orderId, "🆔")} Order ID: <code>${escapeHtml(orderId)}</code>`
+  ];
 
-    return ctx.reply(
-      text,
-      htmlText(text, mainMenu())
+  if (order.order_type === "social") {
+    lines.push(
+      `نوع: سوشیال مدیا`,
+      `پلتفرم: ${htmlPlatform(order.platform_name || "Social")}`,
+      `سرویس: ${htmlServiceName(order.service_name || "Service")}`,
+      `لینک: ${escapeHtml(order.link || "-")}`,
+      `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${Number(order.quantity || 0).toLocaleString("en-US")}`
+    );
+  } else if (order.order_type === "virtual") {
+    lines.push(
+      `نوع: ${virtualNumberTitle()}`,
+      `سرویس: ${htmlVirtualService(order.service_name || "-")}`,
+      `کشور: ${escapeHtml(order.country_name || "-")}`,
+      `شماره: <code>${escapeHtml(order.phone_number || "-")}</code>`,
+      `کد دریافتی: ${order.otp_code ? `<code>${escapeHtml(order.otp_code)}</code>` : "هنوز دریافت نشده"}`
+    );
+    if (order.otp_received_at) lines.push(`زمان دریافت کد: ${formatAfplayDate(order.otp_received_at)}`);
+    const remaining = remainingTenMinuteText(order.created_at, order.otp_received_at, order.status);
+    if (remaining) lines.push(`⏳ زمان تا لغو خودکار: ${remaining}`);
+    if (order.refunded) lines.push(`Refund: ✅ $${Number(order.charge || 0).toFixed(2)}`, `زمان Refund: ${formatAfplayDate(order.refunded_at)}`);
+    if (order.cancel_error) lines.push(`دلیل لغو ناموفق: ${escapeHtml(order.cancel_error)}`);
+  } else {
+    lines.push(
+      `نوع: Certificate آیفون / آیپد`,
+      `پلن: ${escapeHtml(order.plan_name || "-")}`,
+      `UDID: <code>${escapeHtml(order.udid || "-")}</code>`
     );
   }
 
-  const listText = result.rows
-    .map(
-      (order) =>
-        `#${order.id} | ${htmlServiceName(order.service_name ?? "Service")}\\n` +
-        `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${Number(order.quantity).toLocaleString("en-US")} | ` +
-        `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} $${Number(order.charge).toFixed(2)} | ${order.status}`
-    )
-    .join("\\n\\n");
+  lines.push(
+    `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} مبلغ: $${Number(order.charge || 0).toFixed(2)}`,
+    `زمان ثبت: ${formatAfplayDate(order.created_at)} (افغانستان)`,
+    `${tgEmoji(ORDER_RESULT_EMOJI.status, "📌")} وضعیت: ${orderStatusFa(order.status, order.refunded)}`,
+    "",
+    `صفحه ${page + 1} از ${total}`
+  );
+  return lines.join("\n");
+}
 
-  const text =
-    `${htmlMenuTitle("orders", "سفارش‌های من")}\\n\\n${listText}`;
-
-  const controlRows = [];
-
-  for (const order of result.rows) {
+function unifiedOrderKeyboard(order, page, total) {
+  const rows = [];
+  if (order.order_type === "social") {
     const buttons = [];
-
-    if (
-      order.refill_supported &&
-      !order.refill_id
-    ) {
-      buttons.push(
-        Markup.button.callback(
-          `♻️ جبران #${order.id}`,
-          `order:refill:${order.id}`
-        )
-      );
+    if (order.refill_supported && !order.refill_id) buttons.push(Markup.button.callback("♻️ جبران", `order:refill:${order.id}`));
+    if (order.cancel_supported && !order.cancel_closed && !order.cancel_requested_at) {
+      buttons.push(customEmojiCallback("کنسل", `order:cancel_api:${order.id}`, ERROR_CUSTOM_EMOJI_ID));
     }
-
-    if (
-      order.cancel_supported &&
-      !order.cancel_closed &&
-      !order.cancel_requested_at
-    ) {
-      buttons.push(
-        customEmojiCallback(
-          `کنسل #${order.id}`,
-          `order:cancel_api:${order.id}`,
-          "5348027250446967673"
-        )
-      );
-    }
-
-    if (buttons.length) {
-      controlRows.push(buttons);
-    }
+    if (buttons.length) rows.push(buttons);
   }
+  if (order.order_type === "virtual" && !order.refunded && ["active", "purchasing"].includes(String(order.status))) {
+    rows.push([Markup.button.callback("دریافت کد SMS", `vn:otp:${order.id}`)]);
+    rows.push([Markup.button.callback("لغو شماره", `vn:cancel:${order.id}`)]);
+  }
+  const nav = [];
+  if (page > 0) nav.push(Markup.button.callback("⬅️ جدیدتر", `orders:page:${page - 1}`));
+  if (page + 1 < total) nav.push(Markup.button.callback("قدیمی‌تر ➡️", `orders:page:${page + 1}`));
+  if (nav.length) rows.push(nav);
+  rows.push([customEmojiCallback("برگشت", "menu:home", CUSTOM_EMOJI.back)]);
+  return Markup.inlineKeyboard(rows);
+}
 
-  controlRows.push(
-    ...mainMenu().reply_markup.inline_keyboard
-  );
+async function renderUnifiedOrders(ctx, page = 0, { edit = false } = {}) {
+  const data = await getUnifiedOrderPage(ctx.from.id, page);
+  if (!data.row) {
+    const text = `${htmlMenuTitle("orders", "سفارش‌های من")}\n\nهنوز سفارشی ندارید.`;
+    return edit && ctx.callbackQuery
+      ? ctx.editMessageText(text, htmlText(text, mainMenu()))
+      : ctx.reply(text, htmlText(text, mainMenu()));
+  }
+  const text = unifiedOrderText(data.row, data.page, data.total);
+  const options = htmlText(text, unifiedOrderKeyboard(data.row, data.page, data.total));
+  return edit && ctx.callbackQuery ? ctx.editMessageText(text, options) : ctx.reply(text, options);
+}
 
-  return ctx.reply(
-    text,
-    htmlText(
-      text,
-      Markup.inlineKeyboard(controlRows)
-    )
-  );
+async function replyMenuOrders(ctx) {
+  await clearSession(ctx.from.id);
+  return renderUnifiedOrders(ctx, 0, { edit: false });
 }
 
 async function replyMenuDeposit(ctx) {
@@ -5400,73 +5257,13 @@ bot.action("menu:balance", async (ctx) => {
 
 bot.action("menu:orders", async (ctx) => {
   await answerCb(ctx);
+  await clearSession(ctx.from.id);
+  return renderUnifiedOrders(ctx, 0, { edit: true });
+});
 
-  const result = await query(
-    `SELECT
-       id,
-       quantity,
-       charge,
-       status,
-       service_name,
-       refill_supported,
-       cancel_supported,
-       cancel_closed,
-       cancel_requested_at,
-       refill_id,
-       refill_requested_at
-     FROM orders
-     WHERE telegram_id = $1
-     ORDER BY id DESC
-     LIMIT 10`,
-    [ctx.from.id]
-  );
-
-  if (!result.rowCount) {
-    const emptyText =
-      `${htmlMenuTitle("orders", "سفارش‌های من")}\n\n` +
-      "هنوز سفارشی ندارید.";
-
-    return ctx.editMessageText(
-      emptyText,
-      htmlText(emptyText, mainMenu())
-    );
-  }
-
-  const listText = result.rows
-    .map(
-      (order) =>
-        `#${order.id} | ${htmlServiceName(order.service_name ?? "Service")}\n` +
-        `${tgEmoji(ORDER_RESULT_EMOJI.quantity, "📊")} تعداد: ${Number(order.quantity).toLocaleString("en-US")} | ` +
-        `${tgEmoji(ORDER_RESULT_EMOJI.amount, "💵")} $${Number(order.charge).toFixed(2)} | ${order.status}`
-    )
-    .join("\n\n");
-
-  const text =
-    `${htmlMenuTitle("orders", "سفارش‌های من")}\n\n${listText}`;
-
-  const controlRows = [];
-  for (const order of result.rows) {
-    const buttons = [];
-    if (order.refill_supported && !order.refill_id) {
-      buttons.push(Markup.button.callback(`♻️ جبران #${order.id}`, `order:refill:${order.id}`));
-    }
-    if (order.cancel_supported && !order.cancel_closed && !order.cancel_requested_at) {
-      buttons.push(
-        customEmojiCallback(
-          `کنسل #${order.id}`,
-          `order:cancel_api:${order.id}`,
-          ERROR_CUSTOM_EMOJI_ID
-        )
-      );
-    }
-    if (buttons.length) controlRows.push(buttons);
-  }
-  controlRows.push(...mainMenu().reply_markup.inline_keyboard);
-
-  await ctx.editMessageText(
-    text,
-    htmlText(text, Markup.inlineKeyboard(controlRows))
-  );
+bot.action(/^orders:page:(\d+)$/, async (ctx) => {
+  await answerCb(ctx);
+  return renderUnifiedOrders(ctx, Number(ctx.match[1]), { edit: true });
 });
 
 bot.action("menu:deposit", async (ctx) => {
@@ -5720,6 +5517,11 @@ startHeleketServer(bot);
 await bot.launch({
   dropPendingUpdates: false
 });
+
+// Database-backed worker: survives ordinary page navigation and resumes after deploy/restart.
+await runVirtualNumberWorker();
+const virtualNumberWorkerTimer = setInterval(runVirtualNumberWorker, 30_000);
+virtualNumberWorkerTimer.unref?.();
 
 process.once(
   "SIGINT",
