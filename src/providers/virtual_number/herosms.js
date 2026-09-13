@@ -1,3 +1,8 @@
+import {
+  lookupCountryMeta,
+  lookupHeroCountryById
+} from "./countries.js";
+
 const REST_BASE =
   process.env.HEROSMS_API_BASE ||
   "https://hero-sms.com/api/v1";
@@ -401,33 +406,82 @@ export async function getHeroSmsCountries({
   const payload =
     await requestLegacy("getCountries");
 
-  const countries =
-    Array.isArray(payload)
-      ? payload
-      : Array.isArray(payload?.countries)
-        ? payload.countries
-        : [];
+  function objectCountries(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return [];
+    }
+
+    return Object.entries(value)
+      .filter(([, item]) => item && typeof item === "object" && !Array.isArray(item))
+      .map(([key, item]) => ({
+        ...item,
+        id: item.id ?? key
+      }));
+  }
+
+  let countries = [];
+
+  if (Array.isArray(payload)) {
+    countries = payload;
+  } else if (Array.isArray(payload?.countries)) {
+    countries = payload.countries;
+  } else if (Array.isArray(payload?.data)) {
+    countries = payload.data;
+  } else {
+    countries =
+      objectCountries(payload?.countries).length
+        ? objectCountries(payload.countries)
+        : objectCountries(payload?.data).length
+          ? objectCountries(payload.data)
+          : objectCountries(payload);
+  }
 
   const normalized = countries
-    .map((item) => ({
-      id: Number(item?.id),
-      name: String(
+    .map((item) => {
+      const id = Number(item?.id);
+      const name = String(
         item?.eng ||
         item?.name ||
+        item?.title ||
         item?.rus ||
         item?.id ||
         ""
-      ).trim(),
-      visible:
-        item?.visible === undefined
+      ).trim();
+
+      const meta = lookupCountryMeta(name);
+      const directPhoneCode = String(
+        item?.countryPhoneCode ??
+        item?.phoneCode ??
+        item?.callingCode ??
+        item?.dialCode ??
+        ""
+      )
+        .replace(/^\+/, "")
+        .trim();
+
+      const phoneCode =
+        /^\d{1,6}$/.test(directPhoneCode)
+          ? directPhoneCode
+          : meta?.dial || null;
+
+      const visible =
+        item?.visible === undefined || item?.visible === null
           ? true
-          : Number(item.visible) === 1
-    }))
+          : item.visible === true ||
+            Number(item.visible) === 1;
+
+      return {
+        id,
+        name,
+        visible,
+        iso2: meta?.iso2 || null,
+        phoneCode
+      };
+    })
     .filter(
       (item) =>
         Number.isFinite(item.id) &&
-        item.name &&
-        item.visible
+        item.name
     );
 
   cache.countries = normalized;
@@ -677,6 +731,8 @@ export async function getVirtualNumberPackages(
       countryMap.get(
         String(countryId)
       );
+    const fallbackCountry =
+      lookupHeroCountryById(countryId);
 
     packages.push({
       serviceCode: code,
@@ -684,7 +740,16 @@ export async function getVirtualNumberPackages(
         Number(countryId),
       countryName:
         country?.name ||
+        fallbackCountry?.name ||
         `Country ${countryId}`,
+      countryPhoneCode:
+        country?.phoneCode ||
+        fallbackCountry?.dial ||
+        null,
+      countryIso2:
+        country?.iso2 ||
+        fallbackCountry?.iso2 ||
+        null,
       providerPrice,
       sellingPrice:
         virtualNumberSellingPrice(
@@ -756,13 +821,24 @@ export async function getVirtualNumberPackage(
       (item) =>
         Number(item.id) === country
     );
+  const fallbackCountry =
+    lookupHeroCountryById(country);
 
   return {
     serviceCode: code,
     countryId: country,
     countryName:
       countryInfo?.name ||
+      fallbackCountry?.name ||
       `Country ${country}`,
+    countryPhoneCode:
+      countryInfo?.phoneCode ||
+      fallbackCountry?.dial ||
+      null,
+    countryIso2:
+      countryInfo?.iso2 ||
+      fallbackCountry?.iso2 ||
+      null,
     providerPrice,
     sellingPrice:
       virtualNumberSellingPrice(
