@@ -84,6 +84,7 @@ export async function initDatabase() {
   await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancel_requested_at TIMESTAMPTZ;`);
   await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS refill_id TEXT;`);
   await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS refill_requested_at TIMESTAMPTZ;`);
+  await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
 
   await query(`
     CREATE TABLE IF NOT EXISTS deposits (
@@ -169,28 +170,31 @@ export async function initDatabase() {
     );
   `);
 
+  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS country_phone_code INT;`);
+  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS otp_received_at TIMESTAMPTZ;`);
+  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;`);
+  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS auto_cancel_due_at TIMESTAMPTZ;`);
+  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS auto_cancel_attempted_at TIMESTAMPTZ;`);
+  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS auto_cancel_error TEXT;`);
+  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT;`);
+  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS telegram_message_id BIGINT;`);
+  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS timer_message_updated_at TIMESTAMPTZ;`);
+
   await query(`
     CREATE INDEX IF NOT EXISTS idx_virtual_number_orders_user_created
     ON virtual_number_orders (telegram_id, created_at DESC);
   `);
 
   await query(`
+    CREATE INDEX IF NOT EXISTS idx_virtual_number_orders_auto_cancel
+    ON virtual_number_orders (auto_cancel_due_at, status)
+    WHERE refunded = FALSE;
+  `);
+
+  await query(`
     CREATE INDEX IF NOT EXISTS idx_virtual_number_orders_activation
     ON virtual_number_orders (activation_id);
   `);
-
-  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS otp_received_at TIMESTAMPTZ;`);
-  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS auto_cancel_at TIMESTAMPTZ;`);
-  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;`);
-  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS cancel_error TEXT;`);
-  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS order_message_chat_id BIGINT;`);
-  await query(`ALTER TABLE virtual_number_orders ADD COLUMN IF NOT EXISTS order_message_id BIGINT;`);
-
-  await query(`
-    CREATE INDEX IF NOT EXISTS idx_virtual_number_orders_auto_cancel
-    ON virtual_number_orders (auto_cancel_at, status);
-  `);
-
 
   await seedPlatformsAndCategories();
 }

@@ -64,16 +64,19 @@ function normalizeName(value) {
 export function platformEmojiId(platform) {
   const name = normalizeName(platform?.name ?? platform);
 
-  // HeroSMS names can contain suffixes such as "Instagram+Threads" or
-  // "TikTok/Douyin". Match known brands inside the dynamic API label.
-  if (name.includes("whatsapp")) return CUSTOM_EMOJI.platforms.whatsapp;
   if (name.includes("instagram")) return CUSTOM_EMOJI.platforms.instagram;
-  if (name.includes("telegram")) return CUSTOM_EMOJI.platforms.telegram;
   if (name.includes("facebook")) return CUSTOM_EMOJI.platforms.facebook;
   if (name.includes("tiktok") || name.includes("douyin")) return CUSTOM_EMOJI.platforms.tiktok;
   if (name.includes("youtube")) return CUSTOM_EMOJI.platforms.youtube;
-  if (name === "x" || name.includes("twitter")) return CUSTOM_EMOJI.platforms.twitter;
-  if (name.includes("kick") || name.includes("kik")) return CUSTOM_EMOJI.platforms.kik;
+  if (name.includes("telegram")) return CUSTOM_EMOJI.platforms.telegram;
+  if (
+    name === "x" ||
+    name === "twitter" ||
+    name.includes("twitter / x") ||
+    name.includes("twitter/x")
+  ) return CUSTOM_EMOJI.platforms.twitter;
+  if (name.includes("whatsapp")) return CUSTOM_EMOJI.platforms.whatsapp;
+  if (["kik", "kick", "kiki"].some((value) => name.includes(value))) return CUSTOM_EMOJI.platforms.kik;
   if (name.includes("threads")) return CUSTOM_EMOJI.platforms.threads;
   if (name.includes("linkedin") || name.includes("linkdin")) return CUSTOM_EMOJI.platforms.linkedin;
   if (name.includes("google maps") || name.includes("google map")) return CUSTOM_EMOJI.platforms.googleMaps;
