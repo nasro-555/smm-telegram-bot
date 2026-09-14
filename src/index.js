@@ -57,6 +57,10 @@ import {
 } from "./providers/virtual_number/herosms.js";
 import { lookupCountryMeta } from "./providers/virtual_number/countries.js";
 import { sortCountriesByCustomers } from "./providers/virtual_number/popularity.js";
+import {
+  isLanguage, languagePrompt, languageKeyboard,
+  attachLocalizedApi, canonicalMenuText
+} from "./i18n/index.js";
 
 if (!process.env.BOT_TOKEN) {
   throw new Error("BOT_TOKEN is missing");
@@ -151,6 +155,14 @@ bot.telegram.callApi = async (
     nextPayload
   );
 };
+
+async function savedLanguage(telegramId) {
+  if (!telegramId) return "fa";
+  const result = await query("SELECT language_code FROM users WHERE telegram_id = $1", [telegramId]);
+  return result.rows[0]?.language_code || null;
+}
+
+attachLocalizedApi(bot.telegram, (payload) => savedLanguage(payload.chat_id));
 
 bot.use(async (ctx, next) => {
   if (ctx.message?.entities) {
@@ -1548,7 +1560,7 @@ async function renderVirtualNumberChoice(
   const available = Number(data.available);
   const stockText = data.available !== null && data.available !== undefined &&
     Number.isFinite(available) && available >= 0
-    ? `${Math.floor(available).toLocaleString("fa-IR")} عدد`
+    ? `${Math.floor(available).toLocaleString("en-US")} عدد`
     : "نامشخص";
   const stockLine = `موجودی شماره ${escapeHtml(data.country_name || "کشور انتخاب‌شده")}: ${stockText}`;
 
@@ -1789,7 +1801,7 @@ async function virtualNumberOrderText(order) {
   }
 
   if (order?.otp_text) {
-    text += `\nپیام: ${escapeHtml(order.otp_text)}`;
+    text += `\nپیام: <pre>${escapeHtml(order.otp_text)}</pre>`;
   }
 
   if (order?.otp_received_at) {
@@ -2394,12 +2406,48 @@ function startVirtualNumberWorker() {
 bot.use(async (ctx, next) => {
   if (ctx.from) {
     await ensureUser(ctx.from);
+    ctx.state.language = await savedLanguage(ctx.from.id);
   }
-
+  attachLocalizedApi(ctx.telegram, (payload) => {
+    if (payload.chat_id && String(payload.chat_id) !== String(ctx.chat?.id)) {
+      return savedLanguage(payload.chat_id);
+    }
+    return ctx.state.language || "fa";
+  });
   return next();
 });
 
-bot.start(home);
+async function showLanguagePicker(ctx) {
+  // New message also works when invoked from the reply keyboard.
+  return ctx.reply(languagePrompt(), {
+    reply_markup: languageKeyboard(),
+    _afplay_language_picker: true
+  });
+}
+
+bot.start(async (ctx) => {
+  if (!isLanguage(ctx.state.language)) return showLanguagePicker(ctx);
+  return home(ctx);
+});
+
+bot.command("language", showLanguagePicker);
+bot.action("menu:language", async (ctx) => {
+  await answerCb(ctx);
+  return showLanguagePicker(ctx);
+});
+
+bot.action(/^language:select:(en|zh|ru|fa|ar|fr)$/, async (ctx) => {
+  const code = ctx.match[1];
+  await query("UPDATE users SET language_code = $1 WHERE telegram_id = $2", [code, ctx.from.id]);
+  ctx.state.language = code;
+  await answerCb(ctx);
+  await ctx.editMessageText("زبان شما ذخیره شد.");
+  await clearSession(ctx.from.id);
+  // Send a fresh reply keyboard immediately in the new language.
+  await ctx.reply("منوی سریع AFPLAY فعال شد.", persistentMenu());
+  const text = `${tgEmoji(CUSTOM_EMOJI.info.welcome, "👋")} خوش آمدید به AFPLAY\n\nیکی از گزینه‌های زیر را انتخاب کنید:`;
+  return ctx.reply(text, htmlText(text, mainMenu()));
+});
 
 bot.action("menu:home", async (ctx) => {
   await answerCb(ctx);
@@ -3929,7 +3977,7 @@ function unifiedVirtualOrderText(order) {
   }
 
   if (order.otp_text) {
-    text += `\nپیام: ${escapeHtml(order.otp_text)}`;
+    text += `\nپیام: <pre>${escapeHtml(order.otp_text)}</pre>`;
   }
 
   if (order.otp_received_at) {
@@ -4312,11 +4360,11 @@ function certificateInfoText({
 
   return (
     `✅ Certificate آماده شد.\n\n` +
-    `🆔 Certificate ID: ${escapeHtml(id)}\n` +
+    `🆔 Certificate ID: <code>${escapeHtml(id)}</code>\n` +
     `📌 وضعیت: ${escapeHtml(status)}\n` +
     `💵 مبلغ: $${Number(charge).toFixed(2)}\n` +
     `🛡 گارانتی باقی‌مانده: ${escapeHtml(warranty)}\n` +
-    `🔐 پسورد P12: ${escapeHtml(password)}` +
+    `🔐 پسورد P12: <code>${escapeHtml(password)}</code>` +
     (alreadyRegistered
       ? "\n\nاین Certificate از قبل برای حساب شما ثبت شده بود و دوباره هزینه‌ای دریافت نشد."
       : "")
@@ -5454,7 +5502,9 @@ bot.on("text", async (ctx) => {
     ctx.from.id
   );
 
-  const text = ctx.message.text.trim();
+  const text = canonicalMenuText(ctx.message.text.trim());
+
+  if (text === "language") return showLanguagePicker(ctx);
 
   if (text === "لیست محصولات") {
     return replyMenuPlatforms(

@@ -197,7 +197,8 @@ export const mainMenu = () =>
         "menu:support",
         CUSTOM_EMOJI.menu.support
       )
-    ]
+    ],
+    [Markup.button.callback("language", "menu:language")]
   ]);
 
 export function platformKeyboard(platforms, mode) {
@@ -284,7 +285,8 @@ export const persistentMenu = () => ({
           icon_custom_emoji_id: CUSTOM_EMOJI.menu.support,
           style: "danger"
         }
-      ]
+      ],
+      [{ text: "language" }]
     ],
     is_persistent: false,
     resize_keyboard: true,

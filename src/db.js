@@ -29,6 +29,8 @@ export async function initDatabase() {
     );
   `);
 
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS language_code TEXT;`);
+
   await query(`
     CREATE TABLE IF NOT EXISTS platforms (
       id SERIAL PRIMARY KEY,
